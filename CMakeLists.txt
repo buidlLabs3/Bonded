@@ -27,14 +27,22 @@ set(BONDED_SOURCES
     src/domain/policy.cpp
     src/security/crypto.cpp
     src/storage/database.cpp
+    src/integrations/memory_adapters.cpp
+    src/runtime/default_skill_catalog.cpp
+    src/runtime/reliability.cpp
     src/runtime/skill_registry.cpp
+    src/runtime/skill_runtime.cpp
+    src/services/a2a_service.cpp
     src/services/bond_service.cpp
+    src/services/configuration_service.cpp
     src/services/inbox_service.cpp
     src/services/contact_rules.cpp
     src/services/messaging_service.cpp
+    src/services/reconciler.cpp
     src/services/receipt_service.cpp
     src/services/spending_controller.cpp
     src/services/storage_service.cpp
+    src/services/triage_service.cpp
 )
 
 logos_module(NAME ${MODULE_NAME} SOURCES ${BONDED_SOURCES})
@@ -75,4 +83,41 @@ if(BUILD_TESTING)
     target_link_libraries(bonded_inbox_service_tests PRIVATE OpenSSL::Crypto SQLite::SQLite3
                                                                 nlohmann_json::nlohmann_json)
     add_test(NAME bonded_inbox_service_tests COMMAND bonded_inbox_service_tests)
+
+    add_executable(bonded_inbox_second_half_tests
+        tests/test_second_half.cpp
+        src/security/crypto.cpp
+        src/integrations/memory_adapters.cpp
+        src/runtime/default_skill_catalog.cpp
+        src/runtime/reliability.cpp
+        src/runtime/skill_registry.cpp
+        src/services/a2a_service.cpp
+        src/services/configuration_service.cpp
+        src/services/triage_service.cpp
+    )
+    target_include_directories(bonded_inbox_second_half_tests
+                               PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(bonded_inbox_second_half_tests PRIVATE OpenSSL::Crypto SQLite::SQLite3
+                                                                    nlohmann_json::nlohmann_json)
+    add_test(NAME bonded_inbox_second_half_tests COMMAND bonded_inbox_second_half_tests)
+
+    add_executable(bonded_inbox_skill_runtime_tests
+        tests/test_skill_runtime.cpp
+        src/domain/state_machine.cpp
+        src/security/crypto.cpp
+        src/integrations/memory_adapters.cpp
+        src/runtime/default_skill_catalog.cpp
+        src/runtime/skill_registry.cpp
+        src/runtime/skill_runtime.cpp
+        src/services/a2a_service.cpp
+        src/services/configuration_service.cpp
+        src/services/messaging_service.cpp
+        src/services/spending_controller.cpp
+        src/services/storage_service.cpp
+    )
+    target_include_directories(bonded_inbox_skill_runtime_tests
+                               PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(bonded_inbox_skill_runtime_tests PRIVATE OpenSSL::Crypto SQLite::SQLite3
+                                                                     nlohmann_json::nlohmann_json)
+    add_test(NAME bonded_inbox_skill_runtime_tests COMMAND bonded_inbox_skill_runtime_tests)
 endif()

@@ -1,0 +1,14 @@
+{
+  "status": "not-collected",
+  "profile": "replace-with-inbox-vault-or-settlement",
+  "network": "",
+  "network_version": "",
+  "npk": "",
+  "agent_card_reference": "",
+  "program_id": "",
+  "transaction_references": [],
+  "proof_references": [],
+  "deployed_at_utc": "",
+  "release_commit": "",
+  "command": ""
+}

@@ -10,17 +10,19 @@ testnet software and must not be used with production funds or identities.
 
 ## Current State
 
-The repository contains a buildable Logos Core module foundation, generated
-universal interface, `.lgx` packaging, signed/versioned policies, encrypted local
-storage primitives, transactional workflow persistence, message and bond state
-machines, private settlement receipts, profile-scoped skills, spending approval
-controls, injectable stack adapters, and an allocation-free Rust bond-program
-core.
+The repository contains a buildable Logos Core module and `.lgx` package,
+signed/versioned inbox policies, encrypted storage, persisted message and bond
+state machines, spending approvals, safe local triage, signed A2A cards and paid
+task coordination, and exactly 21 profile-scoped default skills. It also ships
+an idempotent headless operations CLI, Basecamp QML assets, recovery primitives,
+an allocation-free Rust bond-program core, and local conformance tests.
 
-The real Logos Storage, Delivery, shielded LEZ wallet, LEZ guest wrapper,
-Basecamp UI, testnet deployments, and `RISC0_DEV_MODE=0` evaluator environment
-remain release gates. See `docs/requirements/first-half-checkpoint.md`; local
-test doubles are never represented as testnet evidence.
+The official Logos Messaging and Storage adapters, shielded LEZ wallet and guest
+wrapper, live Basecamp replica, three testnet deployments, CU measurements,
+narrated video, and `RISC0_DEV_MODE=0` evaluator environment remain release
+gates. Local adapters are never represented as testnet evidence. See
+`docs/known-limitations.md` and `docs/requirements/traceability.md` for the exact
+qualification state.
 
 ## Build
 
@@ -30,16 +32,22 @@ pinned Logos module toolchain and may take several minutes.
 ```bash
 nix build .#lib -L
 nix build .#lgx -L
+nix build .#basecamp-lgx -L
 ```
 
 The plugin build produces `lib/bonded_inbox_plugin.so`. The package build
 produces `logos-bonded_inbox-module-lib.lgx` through the `result` link.
+The Basecamp build separately produces `logos-bonded_inbox_ui-module.lgx`
+through the upstream builder's supported QML-module packaging path.
 
 ## Test
 
 ```bash
 nix develop --command bash scripts/run-unit-tests.sh
 nix develop --command bash scripts/run-service-tests.sh
+nix develop --command bash scripts/run-second-half-tests.sh
+nix develop --command bash scripts/run-skill-runtime-tests.sh
+scripts/run-python-tests.sh
 cargo test --manifest-path programs/bonded-inbox/Cargo.toml
 nix build .#generate -L
 ```
@@ -72,6 +80,28 @@ to keep unstable upstream C++ types behind adapters.
 
 All profiles use the same runtime with independent identity, configuration,
 data directory, and explicit capability allowlist.
+
+## Headless Operations
+
+Plan and deploy with explicit local artifacts:
+
+```bash
+bin/bonded-inbox --data-dir ./agent-data plan \
+  --profile inbox --network logos-local \
+  --owner-public-key OWNER_PUBLIC_KEY \
+  --module ./result/logos-bonded_inbox-module-lib.lgx \
+  --core-binary /path/to/logos-core
+```
+
+Replace `plan` with `deploy` after reviewing preflight output. The CLI also
+supports `status`, `health`, `logs`, `policy`, `fund`, `approve`, `deny`,
+`backup`, `restore`, `upgrade`, `rollback`, and guarded test teardown. See
+`docs/deployment/headless.md`.
+
+Basecamp assets live under `basecamp/`; the owner workflow is documented in
+`docs/owner-guide.md`. The 21-operation reference is
+`docs/reference/default-skills.md`, and the local end-to-end test command is
+`nix develop --command bash scripts/demo-local.sh`.
 
 ## Security
 

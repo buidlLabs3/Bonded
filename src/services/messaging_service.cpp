@@ -44,9 +44,9 @@ bool MessagingService::verify(const SignedEnvelope& envelope, std::uint64_t now_
                                  envelope.signature);
 }
 
-std::string MessagingService::send(const SignedEnvelope& envelope)
+std::string MessagingService::send(const SignedEnvelope& envelope, std::uint64_t now_unix)
 {
-    if (!verify(envelope, 0, network_)) {
+    if (!verify(envelope, now_unix, network_)) {
         throw DomainError("cannot send invalid messaging envelope");
     }
     return adapter_.send(envelope.topic, Json(envelope).dump());

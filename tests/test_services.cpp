@@ -67,8 +67,8 @@ void testMessaging()
                             check(received.payload == envelope.payload, "message payload changed");
                             ++deliveries;
                         });
-    messaging.send(envelope);
-    messaging.send(envelope);
+    messaging.send(envelope, 1000);
+    messaging.send(envelope, 1000);
     check(deliveries == 1, "duplicate messaging envelope was processed twice");
 
     auto tampered = envelope;
@@ -77,6 +77,8 @@ void testMessaging()
           "tampered messaging envelope verified");
     check(!MessagingService::verify(envelope, 2001, "lez-devnet"),
           "expired messaging envelope verified");
+    expectDomainError([&] { messaging.send(envelope, 2001); },
+                      "expired messaging envelope was sent");
 
     adapter.join("group-1");
     check(!adapter.createGroup({"owner", "inbox"}).empty(), "messaging group was not created");

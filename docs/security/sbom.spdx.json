@@ -1,0 +1,25 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "Bonded-Inbox-0.1.0",
+  "documentNamespace": "https://github.com/buidlLabs3/Bonded/sbom/0.1.0",
+  "creationInfo": {
+    "created": "2026-08-11T00:00:00Z",
+    "creators": ["Organization: buidlLabs3"]
+  },
+  "packages": [
+    {"name": "Bonded Inbox", "SPDXID": "SPDXRef-BondedInbox", "versionInfo": "0.1.0", "licenseConcluded": "MIT", "downloadLocation": "NOASSERTION"},
+    {"name": "OpenSSL", "SPDXID": "SPDXRef-OpenSSL", "versionInfo": "3.5.1", "licenseConcluded": "Apache-2.0", "downloadLocation": "NOASSERTION"},
+    {"name": "SQLite", "SPDXID": "SPDXRef-SQLite", "versionInfo": "3.50.2", "licenseConcluded": "blessing", "downloadLocation": "NOASSERTION"},
+    {"name": "nlohmann-json", "SPDXID": "SPDXRef-NlohmannJson", "versionInfo": "3.11.3", "licenseConcluded": "MIT", "downloadLocation": "NOASSERTION"},
+    {"name": "logos-module-builder", "SPDXID": "SPDXRef-LogosModuleBuilder", "versionInfo": "7fbb9420a3fe8ce03a140f0df84a0cc8463bc6dc", "licenseConcluded": "NOASSERTION", "downloadLocation": "git+https://github.com/logos-co/logos-module-builder.git"}
+  ],
+  "relationships": [
+    {"spdxElementId": "SPDXRef-DOCUMENT", "relationshipType": "DESCRIBES", "relatedSpdxElement": "SPDXRef-BondedInbox"},
+    {"spdxElementId": "SPDXRef-BondedInbox", "relationshipType": "DEPENDS_ON", "relatedSpdxElement": "SPDXRef-OpenSSL"},
+    {"spdxElementId": "SPDXRef-BondedInbox", "relationshipType": "DEPENDS_ON", "relatedSpdxElement": "SPDXRef-SQLite"},
+    {"spdxElementId": "SPDXRef-BondedInbox", "relationshipType": "DEPENDS_ON", "relatedSpdxElement": "SPDXRef-NlohmannJson"},
+    {"spdxElementId": "SPDXRef-BondedInbox", "relationshipType": "BUILD_DEPENDENCY_OF", "relatedSpdxElement": "SPDXRef-LogosModuleBuilder"}
+  ]
+}

@@ -46,7 +46,6 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
         const auto configuration = Json::parse(configuration_json);
         profile_name_ = configuration.at("profile").get<std::string>();
         const auto profile = bonded::profileFromString(profile_name_);
-        (void)profile;
         data_directory_ = configuration.at("data_directory").get<std::string>();
         if (data_directory_.empty()) {
             throw bonded::DomainError("data_directory is required");
@@ -58,6 +57,10 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
         bonds_ = std::make_unique<bonded::BondService>();
         inbox_ = std::make_unique<bonded::InboxService>(*database_, *bonds_);
         skills_ = std::make_unique<bonded::SkillRegistry>();
+        skill_runtime_ = std::make_unique<bonded::SkillRuntime>(
+            *skills_, profile, configuration, [this](const Json& proposal) {
+                ownerActionRequired(proposal.dump());
+            });
         registerSkills();
         const auto response = ok(Json{{"profile", profile_name_},
                                       {"data_directory", data_directory_},
@@ -76,6 +79,7 @@ std::string BondedInboxImpl::getStatus()
         return ok(Json{{"state", "ready"},
                        {"profile", profile_name_},
                        {"skill_count", skills_->size()},
+                       {"runtime", skill_runtime_->status()},
                        {"bond_count", bonds_->size()}})
             .dump();
     } catch (const std::exception& error) {
@@ -149,30 +153,12 @@ std::string BondedInboxImpl::invokeSkill(const std::string& request_json)
 
 void BondedInboxImpl::registerSkills()
 {
-    const Json object_schema{{"type", "object"}};
-    skills_->registerSkill({"meta.skills",
-                            "List skills available to this profile",
-                            object_schema,
-                            Json{{"type", "array"}},
-                            {bonded::Profile::Inbox, bonded::Profile::Vault,
-                             bonded::Profile::Settlement},
-                            [this](const Json&) {
-                                return skills_->manifest(bonded::profileFromString(profile_name_));
-                            }});
-    skills_->registerSkill({"meta.status",
-                            "Return redacted runtime status",
-                            object_schema,
-                            object_schema,
-                            {bonded::Profile::Inbox, bonded::Profile::Vault,
-                             bonded::Profile::Settlement},
-                            [this](const Json&) {
-                                return Json{{"state", "ready"}, {"profile", profile_name_}};
-                            }});
+    skill_runtime_->registerDefaultSkills();
 }
 
 void BondedInboxImpl::requireInitialized() const
 {
-    if (!database_ || !bonds_ || !inbox_ || !skills_) {
+    if (!database_ || !bonds_ || !inbox_ || !skills_ || !skill_runtime_) {
         throw bonded::DomainError("runtime is not initialized");
     }
 }

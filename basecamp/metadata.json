@@ -1,0 +1,13 @@
+{
+  "name": "bonded_inbox_ui",
+  "display_name": "Bonded Inbox",
+  "version": "0.1.0",
+  "type": "ui_qml",
+  "interface": "universal",
+  "category": "agent",
+  "description": "Basecamp owner experience for the Bonded Inbox core module",
+  "author": "buidlLabs3",
+  "view": "BondedInbox/BondedInboxPage.qml",
+  "dependencies": [],
+  "capabilities": []
+}

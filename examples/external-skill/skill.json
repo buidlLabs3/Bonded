@@ -1,0 +1,16 @@
+{
+  "name": "example.commitment",
+  "version": "1.0.0",
+  "runtime_api": "bonded.skill/v1",
+  "profiles": ["inbox", "vault"],
+  "input_schema": {
+    "type": "object",
+    "required": ["value"],
+    "properties": {"value": {"type": "string", "maxLength": 4096}}
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["sha256"],
+    "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+  }
+}

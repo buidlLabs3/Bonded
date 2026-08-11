@@ -32,7 +32,7 @@ public:
                                const std::string& public_key);
     static bool verify(const SignedEnvelope& envelope, std::uint64_t now_unix,
                        const std::string& expected_network);
-    std::string send(const SignedEnvelope& envelope);
+    std::string send(const SignedEnvelope& envelope, std::uint64_t now_unix);
     void subscribe(const std::string& topic, std::uint64_t now_unix,
                    std::function<void(const SignedEnvelope&)> handler);
 

@@ -1,0 +1,7 @@
+{
+  "module": "BondedInbox",
+  "version": "1.0",
+  "entrypoint": "BondedInbox/BondedInboxPage.qml",
+  "backend": "bonded_inbox",
+  "minimum_qt": "6.7"
+}

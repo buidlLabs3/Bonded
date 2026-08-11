@@ -6,6 +6,7 @@
 
 #include "logos_module_context.h"
 #include "runtime/skill_registry.h"
+#include "runtime/skill_runtime.h"
 #include "services/bond_service.h"
 #include "services/inbox_service.h"
 #include "storage/database.h"
@@ -36,4 +37,5 @@ private:
     std::unique_ptr<bonded::BondService> bonds_;
     std::unique_ptr<bonded::InboxService> inbox_;
     std::unique_ptr<bonded::SkillRegistry> skills_;
+    std::unique_ptr<bonded::SkillRuntime> skill_runtime_;
 };

@@ -14,9 +14,25 @@
   };
 
   outputs = inputs@{ logos-module-builder, ... }:
-    logos-module-builder.lib.mkLogosModule {
-      src = ./.;
-      configFile = ./metadata.json;
-      flakeInputs = inputs;
+    let
+      core = logos-module-builder.lib.mkLogosModule {
+        src = ./.;
+        configFile = ./metadata.json;
+        flakeInputs = inputs;
+      };
+      basecamp = logos-module-builder.lib.mkLogosQmlModule {
+        src = ./basecamp;
+        configFile = ./basecamp/metadata.json;
+        flakeInputs = inputs;
+      };
+    in
+    core // {
+      packages = builtins.mapAttrs
+        (system: packages:
+          packages // {
+            basecamp = basecamp.packages.${system}.default;
+            basecamp-lgx = basecamp.packages.${system}.lgx;
+          })
+        core.packages;
     };
 }

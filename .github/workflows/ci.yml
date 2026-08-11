@@ -35,6 +35,15 @@ jobs:
       - name: Run service boundary tests
         run: nix develop --command bash scripts/run-service-tests.sh
 
+      - name: Run triage, A2A, and reliability tests
+        run: nix develop --command bash scripts/run-second-half-tests.sh
+
+      - name: Run default-skill conformance tests
+        run: nix develop --command bash scripts/run-skill-runtime-tests.sh
+
+      - name: Run CLI and Basecamp asset tests
+        run: scripts/run-python-tests.sh
+
       - name: Run bond program tests
         run: cargo test --manifest-path programs/bonded-inbox/Cargo.toml
 
@@ -46,6 +55,9 @@ jobs:
 
       - name: Build LGX package
         run: nix build .#lgx -L
+
+      - name: Build Basecamp QML package
+        run: nix build .#basecamp-lgx -L
 
   real-proof-e2e:
     if: ${{ vars.ENABLE_REAL_PROOF_E2E == 'true' }}
@@ -60,5 +72,5 @@ jobs:
       - name: Assert real proof mode
         run: test "$RISC0_DEV_MODE" = "0"
 
-      - name: Run evaluator environment
-        run: scripts/e2e-real-proof.sh
+      - name: Run fail-closed evaluator environment
+        run: scripts/evaluator-real.sh

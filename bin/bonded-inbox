@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""Headless deployment and operations CLI for Bonded Inbox."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import secrets
+import shutil
+import sys
+import tarfile
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+
+STATE_FILE = "state.json"
+CONFIG_FILE = "config.json"
+IDENTITY_FILE = "identity.json"
+
+
+class CliError(RuntimeError):
+    pass
+
+
+def atomic_json(path: Path, value: dict[str, Any], mode: int = 0o600) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, sort_keys=True, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary_name, mode)
+        os.replace(temporary_name, path)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    try:
+        with path.open(encoding="utf-8") as handle:
+            value = json.load(handle)
+    except FileNotFoundError as error:
+        raise CliError(f"deployment state is missing: {path}") from error
+    except json.JSONDecodeError as error:
+        raise CliError(f"invalid JSON state: {path}") from error
+    if not isinstance(value, dict):
+        raise CliError(f"expected JSON object: {path}")
+    return value
+
+
+def data_dir(args: argparse.Namespace) -> Path:
+    return Path(args.data_dir).expanduser().resolve()
+
+
+def public_state(state: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "profile",
+        "network",
+        "status",
+        "version",
+        "balance",
+        "created_at",
+        "updated_at",
+        "test_deployment",
+        "module_sha256",
+        "pending_approvals",
+    }
+    return {key: value for key, value in state.items() if key in allowed}
+
+
+def digest(path: Path) -> str:
+    import hashlib
+
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(block)
+    return hasher.hexdigest()
+
+
+def deployment_plan(args: argparse.Namespace) -> dict[str, Any]:
+    module = Path(args.module).expanduser().resolve()
+    core = Path(args.core_binary).expanduser().resolve()
+    checks = {
+        "module_exists": module.is_file(),
+        "core_binary_exists": core.is_file(),
+        "profile_valid": args.profile in {"inbox", "vault", "settlement"},
+        "owner_key_present": bool(args.owner_public_key),
+    }
+    return {
+        "action": "deploy",
+        "data_directory": str(data_dir(args)),
+        "profile": args.profile,
+        "network": args.network,
+        "module": str(module),
+        "core_binary": str(core),
+        "checks": checks,
+        "ready": all(checks.values()),
+    }
+
+
+def command_plan(args: argparse.Namespace) -> dict[str, Any]:
+    return deployment_plan(args)
+
+
+def command_deploy(args: argparse.Namespace) -> dict[str, Any]:
+    plan = deployment_plan(args)
+    if not plan["ready"]:
+        failed = [name for name, passed in plan["checks"].items() if not passed]
+        raise CliError("deployment preflight failed: " + ", ".join(failed))
+
+    root = data_dir(args)
+    desired = {
+        "profile": args.profile,
+        "network": args.network,
+        "owner_public_key": args.owner_public_key,
+        "per_transaction_limit": args.per_transaction_limit,
+        "per_period_limit": args.per_period_limit,
+        "approval_timeout_seconds": args.approval_timeout_seconds,
+        "module": plan["module"],
+        "core_binary": plan["core_binary"],
+    }
+    if (root.joinpath(CONFIG_FILE).exists()):
+        current = read_json(root / CONFIG_FILE)
+        if current != desired:
+            raise CliError("deployment exists with different configuration; use upgrade")
+        return {"changed": False, "deployment": public_state(read_json(root / STATE_FILE))}
+
+    root.mkdir(parents=True, exist_ok=True)
+    os.chmod(root, 0o700)
+    identity = {
+        "npk": "npk:" + secrets.token_hex(32),
+        "isk": secrets.token_hex(32),
+    }
+    now = int(time.time())
+    state = {
+        "profile": args.profile,
+        "network": args.network,
+        "status": "configured",
+        "version": "0.1.0",
+        "balance": 0,
+        "created_at": now,
+        "updated_at": now,
+        "test_deployment": args.test_deployment,
+        "module_sha256": digest(Path(plan["module"])),
+        "pending_approvals": {},
+        "version_history": [],
+    }
+    atomic_json(root / CONFIG_FILE, desired)
+    atomic_json(root / IDENTITY_FILE, identity)
+    atomic_json(root / STATE_FILE, state)
+    service = {
+        "exec": [plan["core_binary"], "--headless", "--module", plan["module"]],
+        "environment": {"BONDED_CONFIG": str(root / CONFIG_FILE)},
+        "restart": "on-failure",
+    }
+    atomic_json(root / "service.json", service)
+    atomic_json(root / "audit.json", {"events": []})
+    return {"changed": True, "deployment": public_state(state)}
+
+
+def command_status(args: argparse.Namespace) -> dict[str, Any]:
+    return public_state(read_json(data_dir(args) / STATE_FILE))
+
+
+def command_health(args: argparse.Namespace) -> dict[str, Any]:
+    root = data_dir(args)
+    state = read_json(root / STATE_FILE)
+    required = [STATE_FILE, CONFIG_FILE, IDENTITY_FILE, "service.json"]
+    missing = [name for name in required if not root.joinpath(name).is_file()]
+    return {
+        "ready": not missing and state.get("status") in {"configured", "running", "stopped"},
+        "missing": missing,
+        "status": state.get("status", "unknown"),
+    }
+
+
+def command_logs(args: argparse.Namespace) -> dict[str, Any]:
+    audit = read_json(data_dir(args) / "audit.json")
+    events = audit.get("events", [])
+    if not isinstance(events, list):
+        raise CliError("audit event store is invalid")
+    return {"events": events[-args.limit :]}
+
+
+def command_policy(args: argparse.Namespace) -> dict[str, Any]:
+    source = Path(args.file).expanduser().resolve()
+    policy = read_json(source)
+    required = {"inbox_id", "owner_address", "sink_address", "version", "signature"}
+    if not required.issubset(policy):
+        raise CliError("policy is missing required signed fields")
+    if policy["owner_address"] == policy["sink_address"]:
+        raise CliError("policy sink must not be the owner")
+    destination = data_dir(args) / "policy.json"
+    atomic_json(destination, policy)
+    return {"updated": True, "inbox_id": policy["inbox_id"], "version": policy["version"]}
+
+
+def command_fund(args: argparse.Namespace) -> dict[str, Any]:
+    if args.amount <= 0:
+        raise CliError("fund amount must be positive")
+    path = data_dir(args) / STATE_FILE
+    state = read_json(path)
+    state["balance"] = int(state.get("balance", 0)) + args.amount
+    state["updated_at"] = int(time.time())
+    atomic_json(path, state)
+    return {"balance": state["balance"], "recorded": True, "network_submit": False}
+
+
+def command_decision(args: argparse.Namespace) -> dict[str, Any]:
+    path = data_dir(args) / STATE_FILE
+    state = read_json(path)
+    approvals = state.setdefault("pending_approvals", {})
+    current = approvals.get(args.proposal_id)
+    if current in {"approved", "denied"} and current != args.decision:
+        raise CliError("approval already has a conflicting terminal decision")
+    approvals[args.proposal_id] = args.decision
+    state["updated_at"] = int(time.time())
+    atomic_json(path, state)
+    return {"proposal_id": args.proposal_id, "decision": args.decision}
+
+
+def command_backup(args: argparse.Namespace) -> dict[str, Any]:
+    root = data_dir(args)
+    read_json(root / STATE_FILE)
+    destination = Path(args.output).expanduser().resolve()
+    if destination.exists():
+        raise CliError("backup output already exists")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(destination, "x:gz") as archive:
+        for path in sorted(root.rglob("*")):
+            if path.is_file():
+                archive.add(path, arcname=path.relative_to(root), recursive=False)
+    return {"backup": str(destination), "sha256": digest(destination)}
+
+
+def safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
+    members = archive.getmembers()
+    for member in members:
+        path = Path(member.name)
+        if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk():
+            raise CliError("backup contains an unsafe path")
+    return members
+
+
+def command_restore(args: argparse.Namespace) -> dict[str, Any]:
+    root = data_dir(args)
+    source = Path(args.input).expanduser().resolve()
+    if root.exists() and any(root.iterdir()):
+        raise CliError("restore destination must be empty")
+    root.mkdir(parents=True, exist_ok=True)
+    os.chmod(root, 0o700)
+    with tarfile.open(source, "r:gz") as archive:
+        archive.extractall(root, members=safe_members(archive), filter="data")
+    state = read_json(root / STATE_FILE)
+    return {"restored": True, "deployment": public_state(state)}
+
+
+def command_upgrade(args: argparse.Namespace) -> dict[str, Any]:
+    module = Path(args.module).expanduser().resolve()
+    if not module.is_file():
+        raise CliError("upgrade module does not exist")
+    root = data_dir(args)
+    state_path = root / STATE_FILE
+    state = read_json(state_path)
+    configuration = read_json(root / CONFIG_FILE)
+    state.setdefault("version_history", []).append(
+        {"version": state["version"], "module": configuration["module"],
+         "module_sha256": state["module_sha256"]}
+    )
+    configuration["module"] = str(module)
+    state["version"] = args.version
+    state["module_sha256"] = digest(module)
+    state["updated_at"] = int(time.time())
+    atomic_json(root / CONFIG_FILE, configuration)
+    atomic_json(state_path, state)
+    return {"upgraded": True, "version": args.version, "module_sha256": state["module_sha256"]}
+
+
+def command_rollback(args: argparse.Namespace) -> dict[str, Any]:
+    root = data_dir(args)
+    state_path = root / STATE_FILE
+    state = read_json(state_path)
+    history = state.get("version_history", [])
+    if not history:
+        raise CliError("no rollback version is available")
+    previous = history.pop()
+    configuration = read_json(root / CONFIG_FILE)
+    configuration["module"] = previous["module"]
+    state["version"] = previous["version"]
+    state["module_sha256"] = previous["module_sha256"]
+    state["updated_at"] = int(time.time())
+    atomic_json(root / CONFIG_FILE, configuration)
+    atomic_json(state_path, state)
+    return {"rolled_back": True, "version": state["version"]}
+
+
+def command_teardown(args: argparse.Namespace) -> dict[str, Any]:
+    root = data_dir(args)
+    state = read_json(root / STATE_FILE)
+    if not state.get("test_deployment") or args.confirm != "DELETE-TEST-DEPLOYMENT":
+        raise CliError("teardown is restricted to marked test deployments with exact confirmation")
+    shutil.rmtree(root)
+    return {"removed": str(root), "backup_required_for_recovery": True}
+
+
+def add_deploy_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--profile", required=True, choices=["inbox", "vault", "settlement"])
+    parser.add_argument("--network", required=True)
+    parser.add_argument("--owner-public-key", required=True)
+    parser.add_argument("--module", required=True)
+    parser.add_argument("--core-binary", required=True)
+    parser.add_argument("--per-transaction-limit", type=int, default=100)
+    parser.add_argument("--per-period-limit", type=int, default=500)
+    parser.add_argument("--approval-timeout-seconds", type=int, default=3600)
+    parser.add_argument("--test-deployment", action="store_true")
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(prog="bonded-inbox")
+    root.add_argument("--data-dir", required=True)
+    subparsers = root.add_subparsers(dest="command", required=True)
+
+    plan = subparsers.add_parser("plan")
+    add_deploy_arguments(plan)
+    plan.set_defaults(function=command_plan)
+    deploy = subparsers.add_parser("deploy")
+    add_deploy_arguments(deploy)
+    deploy.set_defaults(function=command_deploy)
+    subparsers.add_parser("status").set_defaults(function=command_status)
+    subparsers.add_parser("health").set_defaults(function=command_health)
+    logs = subparsers.add_parser("logs")
+    logs.add_argument("--limit", type=int, default=100)
+    logs.set_defaults(function=command_logs)
+    policy = subparsers.add_parser("policy")
+    policy.add_argument("--file", required=True)
+    policy.set_defaults(function=command_policy)
+    fund = subparsers.add_parser("fund")
+    fund.add_argument("--amount", type=int, required=True)
+    fund.set_defaults(function=command_fund)
+    for decision in ("approve", "deny"):
+        item = subparsers.add_parser(decision)
+        item.add_argument("proposal_id")
+        terminal_decision = "approved" if decision == "approve" else "denied"
+        item.set_defaults(function=command_decision, decision=terminal_decision)
+    backup = subparsers.add_parser("backup")
+    backup.add_argument("--output", required=True)
+    backup.set_defaults(function=command_backup)
+    restore = subparsers.add_parser("restore")
+    restore.add_argument("--input", required=True)
+    restore.set_defaults(function=command_restore)
+    upgrade = subparsers.add_parser("upgrade")
+    upgrade.add_argument("--module", required=True)
+    upgrade.add_argument("--version", required=True)
+    upgrade.set_defaults(function=command_upgrade)
+    subparsers.add_parser("rollback").set_defaults(function=command_rollback)
+    teardown = subparsers.add_parser("teardown")
+    teardown.add_argument("--confirm", required=True)
+    teardown.set_defaults(function=command_teardown)
+    return root
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        output = args.function(args)
+        print(json.dumps({"ok": True, "result": output}, sort_keys=True))
+        return 0
+    except (CliError, OSError, KeyError, ValueError, tarfile.TarError) as error:
+        print(json.dumps({"ok": False, "error": {"code": "operation_failed", "message": str(error)}}),
+              file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
