@@ -1,0 +1,5 @@
+{
+  "profile": "settlement",
+  "category": "blockchain",
+  "capabilities": ["wallet.*", "program.*", "bond.settle", "receipt.issue", "meta.*"]
+}

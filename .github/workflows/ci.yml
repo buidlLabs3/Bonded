@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@b4b293eae0b79aac8a161bb32925a5508c9cca93
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Verify dependency lock
+        run: nix flake lock --no-update-lock-file
+
+      - name: Run lifecycle tests
+        run: nix develop --command bash scripts/run-unit-tests.sh
+
+      - name: Run service boundary tests
+        run: nix develop --command bash scripts/run-service-tests.sh
+
+      - name: Run bond program tests
+        run: cargo test --manifest-path programs/bonded-inbox/Cargo.toml
+
+      - name: Generate Logos module bindings
+        run: nix build .#generate -L
+
+      - name: Build Logos Core plugin
+        run: nix build .#lib -L
+
+      - name: Build LGX package
+        run: nix build .#lgx -L
+
+  real-proof-e2e:
+    if: ${{ vars.ENABLE_REAL_PROOF_E2E == 'true' }}
+    runs-on: [self-hosted, linux, x64, lez-real-proof]
+    timeout-minutes: 180
+    env:
+      RISC0_DEV_MODE: "0"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Assert real proof mode
+        run: test "$RISC0_DEV_MODE" = "0"
+
+      - name: Run evaluator environment
+        run: scripts/e2e-real-proof.sh

@@ -1,0 +1,26 @@
+{
+  "name": "bonded_inbox",
+  "display_name": "Bonded Inbox",
+  "version": "0.1.0",
+  "type": "core",
+  "interface": "universal",
+  "category": "agent",
+  "description": "Private bonded first-contact messaging agent runtime",
+  "author": "buidlLabs3",
+  "main": "bonded_inbox_plugin",
+  "dependencies": [],
+  "capabilities": [],
+  "nix": {
+    "packages": {
+      "build": ["pkg-config"],
+      "runtime": ["nlohmann_json", "openssl", "sqlite"]
+    },
+    "external_libraries": [],
+    "cmake": {
+      "find_packages": ["OpenSSL", "SQLite3", "nlohmann_json"],
+      "extra_sources": [],
+      "extra_include_dirs": [],
+      "extra_link_libraries": ["OpenSSL::Crypto", "SQLite::SQLite3", "nlohmann_json::nlohmann_json"]
+    }
+  }
+}

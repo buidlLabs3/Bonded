@@ -1,0 +1,5 @@
+{
+  "profile": "vault",
+  "category": "storage",
+  "capabilities": ["attachment.encrypt", "storage.*", "agent.task.accept", "meta.*"]
+}

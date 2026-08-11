@@ -1,0 +1,15 @@
+/build/
+/result
+/result-*
+/.cache/
+/.direnv/
+/.env
+*.db
+*.db-shm
+*.db-wal
+*.key
+*.pem
+*.lgx
+*.profraw
+*.profdata
+compile_commands.json

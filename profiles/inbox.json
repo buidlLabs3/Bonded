@@ -1,0 +1,5 @@
+{
+  "profile": "inbox",
+  "category": "messaging",
+  "capabilities": ["policy.publish", "message.receive", "owner.review", "messaging.*", "meta.*"]
+}
