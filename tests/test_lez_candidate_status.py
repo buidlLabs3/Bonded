@@ -55,11 +55,20 @@ class CandidateStatusTests(unittest.TestCase):
         with mock.patch.object(
             status.lez_explorer,
             "rpc_call",
-            side_effect=status.lez_explorer.ExplorerValidationError("network timeout"),
+            side_effect=status.lez_explorer.ExplorerTransportError("network timeout"),
         ):
             report = status.audit(self.candidate(), "register:sender", 1, 3)
         self.assertEqual(report["status"], "verification-unavailable")
         self.assertNotIn("wallet", report)
+
+    def test_service_semantic_failure_is_disputed(self):
+        with mock.patch.object(
+            status.lez_explorer,
+            "rpc_call",
+            side_effect=status.lez_explorer.ExplorerValidationError("malformed response"),
+        ):
+            report = status.audit(self.candidate(), "register:sender", 1, 3)
+        self.assertEqual(report["status"], "disputed")
 
     def test_absent_hash_is_not_sequencer_included(self):
         with mock.patch.object(status.lez_explorer, "rpc_call", return_value=None):
@@ -81,7 +90,7 @@ class CandidateStatusTests(unittest.TestCase):
             report = status.audit(self.candidate(), "register:sender", 1, 3)
         self.assertEqual(report["status"], "disputed")
 
-    def test_empty_explorer_tip_is_verification_unavailable(self):
+    def test_empty_explorer_tip_is_disputed(self):
         serialized = b"public-transaction"
         tx_hash = hashlib.sha256(serialized).hexdigest()
         rpc = [[base64.b64encode(b"\x00" + serialized).decode(), 12], block()]
@@ -89,7 +98,7 @@ class CandidateStatusTests(unittest.TestCase):
             with mock.patch.object(status.lez_explorer, "fetch_explorer_page", return_value="root"):
                 with mock.patch.object(status.lez_explorer, "explorer_recent_blocks", return_value=[]):
                     report = status.audit(self.candidate(tx_hash), "register:sender", 1, 3)
-        self.assertEqual(report["status"], "verification-unavailable")
+        self.assertEqual(report["status"], "disputed")
 
     def test_explorer_absence_is_lag_before_tip_and_dispute_after_tip(self):
         serialized = b"public-transaction"

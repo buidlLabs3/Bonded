@@ -220,15 +220,37 @@ class EvidenceGateTests(unittest.TestCase):
             class ExplorerValidationError(RuntimeError):
                 pass
 
+            class ExplorerTransportError(ExplorerValidationError):
+                pass
+
             @staticmethod
             def reconcile_transaction(_args):
-                raise FakeExplorer.ExplorerValidationError("official explorer unavailable")
+                raise FakeExplorer.ExplorerTransportError("official explorer unavailable")
 
         entry = self._entry()
         document = self._observation(entry, 16, observer="independent")
         latest = gate.validate_observation(document, entry)
         with mock.patch.object(gate, "_load_explorer", return_value=FakeExplorer):
             with self.assertRaisesRegex(gate.VerificationUnavailable, "unavailable"):
+                gate.live_reconcile(entry, latest)
+
+    def test_live_semantic_mismatch_is_a_hard_failure(self):
+        class FakeExplorer:
+            class ExplorerValidationError(RuntimeError):
+                pass
+
+            class ExplorerTransportError(ExplorerValidationError):
+                pass
+
+            @staticmethod
+            def reconcile_transaction(_args):
+                raise FakeExplorer.ExplorerValidationError("transaction not found")
+
+        entry = self._entry()
+        document = self._observation(entry, 16, observer="independent")
+        latest = gate.validate_observation(document, entry)
+        with mock.patch.object(gate, "_load_explorer", return_value=FakeExplorer):
+            with self.assertRaisesRegex(FakeExplorer.ExplorerValidationError, "not found"):
                 gate.live_reconcile(entry, latest)
 
 

@@ -54,9 +54,26 @@ class ExplorerVerifierTests(unittest.TestCase):
         malformed = mock.MagicMock()
         malformed.__enter__.return_value.read.return_value = b"not-json"
         with mock.patch.object(lez.urllib.request, "urlopen", return_value=malformed) as request:
-            with self.assertRaisesRegex(lez.ExplorerValidationError, "malformed JSON"):
+            with self.assertRaisesRegex(lez.ExplorerValidationError, "malformed JSON") as raised:
                 lez.rpc_call("checkHealth", [], 1)
+        self.assertNotIsInstance(raised.exception, lez.ExplorerTransportError)
         self.assertEqual(request.call_count, 1)
+
+        http_error = urllib.error.HTTPError("url", 404, "not found", {}, None)
+        with mock.patch.object(lez.urllib.request, "urlopen", side_effect=http_error) as request:
+            with self.assertRaisesRegex(lez.ExplorerValidationError, "HTTP 404") as raised:
+                lez.rpc_call("checkHealth", [], 1)
+        self.assertNotIsInstance(raised.exception, lez.ExplorerTransportError)
+        self.assertEqual(request.call_count, 1)
+
+        server_error = urllib.error.HTTPError("url", 503, "unavailable", {}, None)
+        with mock.patch.object(
+            lez.urllib.request, "urlopen", side_effect=server_error
+        ) as request:
+            with mock.patch.object(lez.time, "sleep"):
+                with self.assertRaisesRegex(lez.ExplorerTransportError, "3 attempts"):
+                    lez.rpc_call("checkHealth", [], 1)
+        self.assertEqual(request.call_count, lez.TRANSPORT_ATTEMPTS)
 
     def test_explorer_page_retries_transport_only(self):
         response = mock.MagicMock()

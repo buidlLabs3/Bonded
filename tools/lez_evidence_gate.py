@@ -360,7 +360,7 @@ def live_reconcile(entry: dict, latest: dict) -> dict:
                 account_id=document.get("public_account_ids", []),
             )
             result = explorer.reconcile_transaction(args)
-    except explorer.ExplorerValidationError as exc:
+    except explorer.ExplorerTransportError as exc:
         raise VerificationUnavailable(str(exc)) from exc
     _validate_live(result, latest)
     return result

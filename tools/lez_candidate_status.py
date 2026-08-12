@@ -108,8 +108,10 @@ def audit(candidate: dict, operation_id: str, timeout: float, confirmations: int
     report = _base_report(operation_id, transaction)
     try:
         sequencer_result = lez_explorer.rpc_call("getTransaction", [transaction], timeout)
-    except (lez_explorer.ExplorerValidationError, IndexError, KeyError, TypeError) as exc:
+    except lez_explorer.ExplorerTransportError as exc:
         return {**report, "status": "verification-unavailable", "reason": str(exc)}
+    except (lez_explorer.ExplorerValidationError, IndexError, KeyError, TypeError) as exc:
+        return {**report, "status": "disputed", "reason": str(exc)}
     if sequencer_result is None:
         return {
             **report,
@@ -124,8 +126,10 @@ def audit(candidate: dict, operation_id: str, timeout: float, confirmations: int
         return {**report, "status": "disputed", "reason": "sequencer response has invalid shape"}
     try:
         raw_block = lez_explorer.rpc_call("getBlock", [sequencer_result[1]], timeout)
-    except lez_explorer.ExplorerValidationError as exc:
+    except lez_explorer.ExplorerTransportError as exc:
         return {**report, "status": "verification-unavailable", "reason": str(exc)}
+    except lez_explorer.ExplorerValidationError as exc:
+        return {**report, "status": "disputed", "reason": str(exc)}
     try:
         decoded = lez_explorer.decode_sequencer_transaction(*sequencer_result)
         block = lez_explorer.decode_sequencer_block(raw_block)
@@ -157,6 +161,8 @@ def audit(candidate: dict, operation_id: str, timeout: float, confirmations: int
         )
         indexed = lez_explorer.explorer_transaction(transaction_document, transaction)
         indexed_kind, indexed_payload = lez_explorer.transaction_kind_and_payload(indexed)
+    except lez_explorer.ExplorerTransportError as exc:
+        return {**report, "status": "verification-unavailable", "reason": str(exc)}
     except (lez_explorer.ExplorerValidationError, IndexError, KeyError, TypeError) as exc:
         message = str(exc)
         if explorer_tip is not None and (
@@ -164,7 +170,7 @@ def audit(candidate: dict, operation_id: str, timeout: float, confirmations: int
         ):
             status = "pending-indexer" if explorer_tip < decoded["block_id"] else "disputed"
             return {**report, "status": status, "explorer_tip": explorer_tip, "reason": message}
-        return {**report, "status": "verification-unavailable", "reason": message}
+        return {**report, "status": "disputed", "reason": message}
 
     role = operation_id.split(":", 1)[1]
     expected_accounts = [candidate["accounts"][role]]
@@ -189,8 +195,10 @@ def audit(candidate: dict, operation_id: str, timeout: float, confirmations: int
     )
     try:
         reconciled = lez_explorer.reconcile_transaction(args)
-    except lez_explorer.ExplorerValidationError as exc:
+    except lez_explorer.ExplorerTransportError as exc:
         return {**report, "status": "verification-unavailable", "reason": str(exc)}
+    except lez_explorer.ExplorerValidationError as exc:
+        return {**report, "status": "disputed", "reason": str(exc)}
     return {
         **report,
         "status": reconciled["status"],

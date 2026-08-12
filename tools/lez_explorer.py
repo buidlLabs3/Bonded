@@ -41,6 +41,10 @@ class ExplorerValidationError(RuntimeError):
     pass
 
 
+class ExplorerTransportError(ExplorerValidationError):
+    pass
+
+
 def base58_encode(value: bytes) -> str:
     leading_zeroes = len(value) - len(value.lstrip(b"\x00"))
     number = int.from_bytes(value, "big")
@@ -107,9 +111,16 @@ def rpc_call(method: str, params: list, timeout: float = 30.0):
             raise ExplorerValidationError(
                 f"sequencer RPC returned malformed JSON for {method}: {exc}"
             ) from exc
+        except urllib.error.HTTPError as exc:
+            if 500 <= exc.code < 600 and attempt + 1 < TRANSPORT_ATTEMPTS:
+                time.sleep(TRANSPORT_RETRY_SECONDS * (attempt + 1))
+                continue
+            error = ExplorerTransportError if 500 <= exc.code < 600 else ExplorerValidationError
+            suffix = f" after {TRANSPORT_ATTEMPTS} attempts" if error is ExplorerTransportError else ""
+            raise error(f"sequencer RPC returned HTTP {exc.code}{suffix} for {method}") from exc
         except (OSError, urllib.error.URLError) as exc:
             if attempt + 1 == TRANSPORT_ATTEMPTS:
-                raise ExplorerValidationError(
+                raise ExplorerTransportError(
                     f"sequencer RPC failed for {method} after {TRANSPORT_ATTEMPTS} attempts: {exc}"
                 ) from exc
             time.sleep(TRANSPORT_RETRY_SECONDS * (attempt + 1))
@@ -140,9 +151,16 @@ def fetch_explorer_page(path: str, timeout: float = 30.0) -> str:
             raise ExplorerValidationError(
                 f"explorer returned invalid UTF-8 for {path}: {exc}"
             ) from exc
+        except urllib.error.HTTPError as exc:
+            if 500 <= exc.code < 600 and attempt + 1 < TRANSPORT_ATTEMPTS:
+                time.sleep(TRANSPORT_RETRY_SECONDS * (attempt + 1))
+                continue
+            error = ExplorerTransportError if 500 <= exc.code < 600 else ExplorerValidationError
+            suffix = f" after {TRANSPORT_ATTEMPTS} attempts" if error is ExplorerTransportError else ""
+            raise error(f"explorer returned HTTP {exc.code}{suffix} for {path}") from exc
         except (OSError, urllib.error.URLError) as exc:
             if attempt + 1 == TRANSPORT_ATTEMPTS:
-                raise ExplorerValidationError(
+                raise ExplorerTransportError(
                     f"explorer request failed for {path} after {TRANSPORT_ATTEMPTS} attempts: {exc}"
                 ) from exc
             time.sleep(TRANSPORT_RETRY_SECONDS * (attempt + 1))
