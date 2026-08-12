@@ -5,6 +5,11 @@ valid only while `tools/lez_explorer.py reconcile` returns `status: finalized`
 for the exact transaction and block. The original sequencer-only artifact is
 retained byte-for-byte under `history/` for auditability.
 
+The `settlement-program-deployment` inventory row currently passes the offline
+gate using the primary and independently confirmed observations plus the paired
+browser captures. That one passing row does not qualify the remaining wallet,
+lifecycle, spending-control, or paid-task rows.
+
 `required-evidence.json` is the complete public transaction inventory for the
 release gate. Each row requires two distinct finalized machine observations,
 separated by at least the configured confirmation depth, plus fresh-browser
