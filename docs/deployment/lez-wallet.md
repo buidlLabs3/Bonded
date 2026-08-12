@@ -18,8 +18,11 @@ python3 tools/lez_wallet.py check-source --wallet-source "$BONDED_LEZ_SOURCE"
 ```
 
 The check rejects the wrong commit, a non-official origin, tracked source
-changes, a missing release binary, or an unexecutable binary. Its sanitized
-output includes the source commit and executable SHA-256/size.
+changes, a missing release binary, an unexecutable binary, or missing official
+FFI artifacts. Its sanitized output includes the source commit plus SHA-256/size
+for the CLI, generated FFI header, and `libwallet_ffi.so`. The generic Bonded
+lifecycle adapter uses this exact official library; it does not load a system or
+unpinned wallet library.
 
 Supported upstream surfaces at the pinned commit are:
 
@@ -36,6 +39,30 @@ Supported upstream surfaces at the pinned commit are:
 The official CLI does not expose a generic arbitrary-program call command. The
 Bonded adapter must use the public `WalletCore` APIs for those calls and must
 fail closed if the required account or instruction shape is unsupported.
+
+`tools/lez_bond.py` is the typed wrapper for those generic calls. It verifies
+the exact FFI artifact and canonical guest image ID, derives the state and
+escrow PDAs through the official wallet, and emits the instruction words whose
+layout is checked by a Rust guest serialization oracle. Omit `--submit` to
+inspect the complete call shape without proving or sending it:
+
+```bash
+python3 tools/lez_bond.py \
+  --wallet-source "$BONDED_LEZ_SOURCE" \
+  --wallet-home "$LEE_WALLET_HOME_DIR" \
+  --sender "$SENDER" --owner "$OWNER" --sink "$SINK" \
+  --bond-id "$BOND_ID" \
+  initialize \
+  --message-commitment "$MESSAGE_COMMITMENT" \
+  --policy-commitment "$POLICY_COMMITMENT" \
+  --amount 1000 --deadline-ms "$DEADLINE_MS"
+```
+
+Submission additionally requires `--submit`, `BONDED_LEZ_SUBMIT=YES`, and
+`RISC0_DEV_MODE=0`. Native wallet output is captured in a private temporary
+file, scanned for recovery/key material, reduced to its SHA-256 and byte count,
+and deleted. Output remains a sequencer-finalized candidate until the explorer
+gate independently promotes it.
 
 ## Secret-Safe Wallet Setup
 

@@ -23,6 +23,8 @@ fi
 
 (
     cd "$source_dir"
-    cargo build --locked --release -p wallet
+    cargo build --locked --release -p wallet -p wallet-ffi
 )
-printf '%s\n' "$source_dir/target/release/wallet"
+printf '%s\n' \
+    "$source_dir/target/release/wallet" \
+    "$source_dir/target/release/deps/libwallet_ffi.so"

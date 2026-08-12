@@ -11,5 +11,7 @@
   "sequencer_url": "https://testnet.lez.logos.co",
   "source_repository": "https://github.com/logos-blockchain/logos-execution-zone.git",
   "wallet_binary_relative": "target/release/wallet",
+  "wallet_ffi_header_relative": "lez/wallet-ffi/wallet_ffi.h",
+  "wallet_ffi_library_relative": "target/release/deps/libwallet_ffi.so",
   "wallet_package": "wallet"
 }

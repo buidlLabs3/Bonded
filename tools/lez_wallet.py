@@ -77,6 +77,8 @@ def load_network_profile(path: Path) -> dict:
         "channel_id": "01" * 32,
         "wallet_package": "wallet",
         "wallet_binary_relative": "target/release/wallet",
+        "wallet_ffi_header_relative": "lez/wallet-ffi/wallet_ffi.h",
+        "wallet_ffi_library_relative": "target/release/deps/libwallet_ffi.so",
         "risc0_dev_mode": 0,
         "required_confirmation_depth": 3,
     }
@@ -116,12 +118,26 @@ def verify_source(source: Path, profile: dict) -> dict:
     expected_binary = (source / "target" / "release" / "wallet").resolve()
     if binary != expected_binary or not binary.is_file() or not os.access(binary, os.X_OK):
         raise WalletAdapterError("pinned official wallet release binary is missing or not executable")
+    ffi_header = (source / profile["wallet_ffi_header_relative"]).resolve(strict=True)
+    expected_header = (source / "lez" / "wallet-ffi" / "wallet_ffi.h").resolve()
+    if ffi_header != expected_header or not ffi_header.is_file():
+        raise WalletAdapterError("pinned official wallet FFI header is missing")
+    ffi_library = (source / profile["wallet_ffi_library_relative"]).resolve(strict=True)
+    expected_library = (source / "target" / "release" / "deps" / "libwallet_ffi.so").resolve()
+    if ffi_library != expected_library or not ffi_library.is_file():
+        raise WalletAdapterError("pinned official wallet FFI library is missing")
     return {
         "source": str(source),
         "source_commit": head,
         "binary": str(binary),
         "binary_size": binary.stat().st_size,
         "binary_sha256": sha256_file(binary),
+        "ffi_header": str(ffi_header),
+        "ffi_header_size": ffi_header.stat().st_size,
+        "ffi_header_sha256": sha256_file(ffi_header),
+        "ffi_library": str(ffi_library),
+        "ffi_library_size": ffi_library.stat().st_size,
+        "ffi_library_sha256": sha256_file(ffi_library),
     }
 
 

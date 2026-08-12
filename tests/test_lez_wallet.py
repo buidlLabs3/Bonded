@@ -28,6 +28,8 @@ def profile():
         "channel_id": "01" * 32,
         "wallet_package": "wallet",
         "wallet_binary_relative": "target/release/wallet",
+        "wallet_ffi_header_relative": "lez/wallet-ffi/wallet_ffi.h",
+        "wallet_ffi_library_relative": "target/release/deps/libwallet_ffi.so",
         "risc0_dev_mode": 0,
         "required_confirmation_depth": 3,
     }
@@ -64,6 +66,12 @@ class OfficialWalletAdapterTests(unittest.TestCase):
             binary.parent.mkdir(parents=True)
             binary.write_text("wallet", encoding="utf-8")
             binary.chmod(0o700)
+            ffi_library = source / "target/release/deps/libwallet_ffi.so"
+            ffi_library.parent.mkdir(parents=True)
+            ffi_library.write_text("ffi", encoding="utf-8")
+            ffi_header = source / "lez/wallet-ffi/wallet_ffi.h"
+            ffi_header.parent.mkdir(parents=True)
+            ffi_header.write_text("header", encoding="utf-8")
             with mock.patch.object(
                 wallet,
                 "_run",
@@ -73,6 +81,8 @@ class OfficialWalletAdapterTests(unittest.TestCase):
             self.assertEqual(result["source_commit"], wallet.OFFICIAL_RELEASE_COMMIT)
             self.assertEqual(result["binary_size"], 6)
             self.assertEqual(result["binary_sha256"], wallet.hashlib.sha256(b"wallet").hexdigest())
+            self.assertEqual(result["ffi_library_size"], 3)
+            self.assertEqual(result["ffi_header_size"], 6)
             with mock.patch.object(wallet, "_run", return_value="ab" * 20):
                 with self.assertRaisesRegex(wallet.WalletAdapterError, "expected"):
                     wallet.verify_source(source, profile())
