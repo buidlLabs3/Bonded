@@ -21,4 +21,4 @@ exec python3 tools/lez_testnet.py \
     deploy \
     --elf "$elf" \
     --release-commit "$release_commit" \
-    --evidence "${BONDED_LEZ_EVIDENCE:-evidence/testnet/settlement-program.json}"
+    --evidence "${BONDED_LEZ_EVIDENCE:-evidence/testnet/candidates/settlement-program-sequencer.json}"

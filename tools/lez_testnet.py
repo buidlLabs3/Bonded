@@ -195,7 +195,7 @@ def deploy(args) -> dict:
         raise TestnetError("deployment transaction was not included before the poll deadline")
 
     evidence = {
-        "status": "verified",
+        "status": "sequencer-included",
         "kind": "program-deployment",
         "component": "settlement-program",
         "network": "lez-testnet",
@@ -213,6 +213,10 @@ def deploy(args) -> dict:
         "submitted": submitted,
         "reproduce": "RISC0_DEV_MODE=0 scripts/deploy-lez-testnet.sh",
         "last_block_at_preflight": health["last_block"],
+        "verification_boundary": (
+            "Sequencer inclusion only. Run tools/lez_explorer.py and require a "
+            "finalized result before treating this transaction as public testnet evidence."
+        ),
     }
     atomic_json(args.evidence, evidence)
     return evidence
@@ -230,7 +234,9 @@ def parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("--elf", type=Path, required=True)
     deploy_parser.add_argument("--release-commit", required=True)
     deploy_parser.add_argument(
-        "--evidence", type=Path, default=Path("evidence/testnet/settlement-program.json")
+        "--evidence",
+        type=Path,
+        default=Path("evidence/testnet/candidates/settlement-program-sequencer.json"),
     )
     deploy_parser.add_argument("--r0vm", default="r0vm")
     deploy_parser.add_argument("--poll-attempts", type=int, default=60)
