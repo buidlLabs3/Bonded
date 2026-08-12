@@ -68,6 +68,23 @@ another transaction. An interrupted `submitting` state blocks automatic retry
 until it is manually reconciled. Output remains a sequencer-finalized candidate
 until the explorer gate independently promotes it.
 
+After a lifecycle candidate reaches sequencer finality and account-state
+reconciliation, promote the exact journaled hash through the public explorer:
+
+```bash
+python3 tools/lez_bond_evidence.py \
+  --candidate evidence/testnet/candidates/acceptance-initialize.json \
+  --operation acceptance-initialize \
+  --verifier-commit "$(git rev-parse HEAD)" \
+  --observer primary \
+  --evidence evidence/testnet/lifecycle/acceptance-initialize.json
+```
+
+The helper requires the canonical deployment's program and binary, checks the
+operation/outcome account shape, compares the finalized hash and block back to
+the lifecycle journal, and creates the observation immutably. Use a distinct
+observer and output path for the later independent observation.
+
 ## Secret-Safe Wallet Setup
 
 Create a dedicated testnet-only wallet directory outside the repository. Set
