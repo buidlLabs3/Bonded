@@ -6,7 +6,9 @@ import importlib.util
 import json
 import struct
 import unittest
+from argparse import Namespace
 from pathlib import Path
+from unittest import mock
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -78,6 +80,114 @@ class ExplorerVerifierTests(unittest.TestCase):
         malformed = raw[:1] + struct.pack("<I", len(bytecode) + 1) + bytecode
         with self.assertRaisesRegex(lez.ExplorerValidationError, "length"):
             lez.decode_sequencer_transaction(base64.b64encode(malformed).decode(), 1)
+
+    def test_public_decode_checks_canonical_serialized_hash(self):
+        serialized = b"canonical-public-transaction"
+        transaction = lez.decode_sequencer_transaction(
+            base64.b64encode(b"\x00" + serialized).decode(), 51
+        )
+        self.assertEqual(transaction["kind"], "Public")
+        self.assertEqual(transaction["block_id"], 51)
+        self.assertEqual(transaction["serialized_size"], len(serialized))
+        self.assertEqual(transaction["hash"], hashlib.sha256(serialized).hexdigest())
+
+    def test_transaction_account_ids_follow_variant_shape(self):
+        public = {"message": {"account_ids": ["sender", "owner"]}}
+        private = {
+            "message": {
+                "public_actions": [
+                    {"account_id": "sender"},
+                    {"account_id": "owner"},
+                ]
+            }
+        }
+        self.assertEqual(lez._transaction_account_ids("Public", public), ["sender", "owner"])
+        self.assertEqual(
+            lez._transaction_account_ids("PrivacyPreserving", private), ["sender", "owner"]
+        )
+
+    def test_program_id_hex_normalizes_to_explorer_base58(self):
+        raw = bytes(range(32))
+        encoded = lez.base58_encode(raw)
+        self.assertEqual(lez.base58_decode(encoded, "program ID"), raw)
+        self.assertEqual(lez.explorer_program_id(raw.hex()), encoded)
+        self.assertEqual(lez.explorer_program_id(encoded), encoded)
+        with self.assertRaisesRegex(lez.ExplorerValidationError, "32 bytes"):
+            lez.base58_decode("abc", "account ID")
+
+    def test_generic_public_reconciliation_binds_program_accounts_and_pages(self):
+        tx_hash = "ab" * 32
+        block_hash = "cd" * 32
+        program_id_hex = "ef" * 32
+        program_id = lez.base58_encode(bytes.fromhex(program_id_hex))
+        sender = lez.base58_encode(b"\x01" * 32)
+        context = {
+            "observed_at": "2026-08-12T00:00:00+00:00",
+            "channel_id": "test-channel",
+            "head": {"block_id": 55},
+            "explorer_tip": {
+                "header": {"block_id": 55, "hash": "12" * 32, "timestamp": 42},
+                "bedrock_status": "Finalized",
+            },
+            "explorer_tip_id": 55,
+            "overlaps": [{"matches": True}] * 3,
+            "newest_sequencer_finalized": 55,
+            "lag_scan_complete": True,
+            "sequencer_tx": {
+                "kind": "Public",
+                "block_id": 51,
+                "hash": tx_hash,
+                "serialized_size": 123,
+            },
+            "sequencer_block": {
+                "block_id": 51,
+                "hash": block_hash,
+                "bedrock_status": "Finalized",
+            },
+            "block_path": "/block/51",
+            "tx_path": f"/transaction/{tx_hash}",
+            "block_document": f"51 {block_hash} {tx_hash} Finalized",
+            "transaction_document": f"{tx_hash} Public Transaction {program_id} {sender}",
+            "indexed_block": {
+                "header": {"block_id": 51, "hash": block_hash},
+                "bedrock_status": "Finalized",
+            },
+            "indexed_kind": "Public",
+            "indexed_payload": {
+                "hash": tx_hash,
+                "message": {"program_id": program_id, "account_ids": [sender]},
+            },
+            "indexed_transactions": [{"kind": "Public", "hash": tx_hash}],
+            "confirmations": 4,
+        }
+        args = Namespace(
+            tx_hash=tx_hash,
+            block_id=51,
+            transaction_type="Public",
+            kind="wallet-registration",
+            component="testnet-wallet",
+            operation="register-sender",
+            program_id=program_id_hex,
+            account_id=[sender],
+            verifier_commit="",
+            confirmations=3,
+            overlap_count=3,
+            lag_scan=32,
+            evidence=None,
+        )
+        with mock.patch.object(lez, "_collect_reconciliation", return_value=context):
+            report = lez.reconcile_transaction(args)
+        self.assertEqual(report["status"], "finalized")
+        self.assertEqual(report["public_program_id"], program_id)
+        self.assertTrue(all(report["checks"].values()))
+
+        wrong_account = lez.base58_encode(b"\x02" * 32)
+        args.account_id = [wrong_account]
+        context["transaction_document"] += f" {wrong_account}"
+        with mock.patch.object(lez, "_collect_reconciliation", return_value=context):
+            report = lez.reconcile_transaction(args)
+        self.assertEqual(report["status"], "disputed")
+        self.assertFalse(report["checks"]["expected_accounts_match"])
 
     def test_rendered_not_found_and_missing_expected_text_fail(self):
         with self.assertRaisesRegex(lez.ExplorerValidationError, "not found"):
