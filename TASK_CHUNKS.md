@@ -154,6 +154,17 @@ returned that association. Therefore:
   explorer/indexer tip and canonical block history, then use the official wallet
   path if a replacement transaction is required.
 
+**Chunk 20A resolution, observed 2026-08-12T08:27:21Z:** the official explorer
+subsequently resolved the exact transaction and finalized block 4035. Three
+overlapping finalized blocks (4092-4094) matched the sequencer by exact hash, and
+the newest finalized height was 4094 on both services. The original artifact is
+preserved under `evidence/testnet/history/`; the current evidence was generated
+by committed verifier `e4a33e36cfce8b9e8547ee4aa8612d0b948dd20b`. Because the
+earlier sequencer finality and private indexer state were not captured, its
+historical failure is classified only as resolved `pending-indexer-or-finality`,
+not as proven indexer lag or divergence. Chunk 20B remains required before any
+new release-path submission or program call.
+
 ## Delivery Waves
 
 | Wave | Chunks | Outcome |

@@ -9,9 +9,16 @@ run and refuses deployment if the network ABI has drifted.
 
 The release at commit `3c3054f59358864ca3ce93578e6d874778f1e230` is published
 as program `fb83bbb4c6140cb07e9a206d67e96a496bd395eed231e0f6158a672549e9a75c`.
-Transaction `d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad`
-was independently confirmed in block 4035. Sanitized reproducibility evidence
-is committed at `evidence/testnet/settlement-program.json`.
+The official explorer now resolves
+[transaction `d033...`](https://explorer.testnet.lez.logos.co/transaction/d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad)
+as a Program Deployment Transaction and shows it in finalized
+[block 4035](https://explorer.testnet.lez.logos.co/block/4035), hash
+`603a76b3c88c4a611906624ce6a347c93108335be3f27dd6d03a662250d8f142`.
+The reconciled evidence is `evidence/testnet/settlement-program.json`; the
+sequencer-only artifact originally created at submission time is preserved in
+`evidence/testnet/history/settlement-program-sequencer-included-20260812.json`.
+See `docs/deployment/lez-testnet-reconciliation.md` for the observed service
+tips, overlapping canonical blocks, and historical classification.
 
 ## Program Publication
 
@@ -45,11 +52,24 @@ The deployment client:
 - checks for a prior identical transaction before sending;
 - waits for block inclusion and writes no evidence until inclusion succeeds.
 
-Successful public evidence is written to
-`evidence/testnet/settlement-program.json`. It contains hashes, IDs, block,
-endpoint, source revisions, and timestamp only. It identifies a program
-component, not an agent profile. The ELF stays ignored because it is
-reproducible from the release commit and lockfile.
+Direct submission now writes only a `sequencer-included` candidate under
+`evidence/testnet/candidates/`; it can never create successful public evidence.
+After the official explorer indexes and finalizes the exact transaction, run the
+read-only canonical verifier with the current full verifier commit:
+
+```bash
+python3 tools/lez_explorer.py reconcile \
+  --verifier-commit "$(git rev-parse HEAD)" \
+  --evidence evidence/testnet/settlement-program.json
+```
+
+A successful verifier result contains hashes, IDs, block/finality, exact public
+URLs, source revisions, confirmation depth, and a multi-block canonical-chain
+comparison. It identifies a program component, not an agent profile. The ELF
+stays ignored because it is reproducible from the release commit and lockfile.
+A network error, missing hydration resource, not-found page, pending block,
+transaction mismatch, block mismatch, bytecode mismatch, or fewer than three
+matching finalized overlap blocks exits nonzero and cannot create passing data.
 
 Override `LEZ_SEQUENCER_URL`, `BONDED_LEZ_ELF`, or `BONDED_LEZ_EVIDENCE` only
 for an explicitly reviewed environment. Plain HTTP requires the Python client's

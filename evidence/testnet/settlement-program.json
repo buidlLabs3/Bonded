@@ -2,19 +2,100 @@
   "binary_sha256": "8bca02c366c3261474e51818d8b2a95a441121c85bc57acf7bcc62dc8566182a",
   "binary_size": 370032,
   "block": 4035,
+  "block_hash": "603a76b3c88c4a611906624ce6a347c93108335be3f27dd6d03a662250d8f142",
+  "checks": {
+    "bytecode_digest_matches": true,
+    "bytecode_size_matches": true,
+    "confirmation_depth_satisfied": true,
+    "explorer_block_contains_transaction": true,
+    "explorer_block_hash_matches_sequencer": true,
+    "explorer_block_is_finalized": true,
+    "explorer_reached_candidate_block": true,
+    "explorer_transaction_hash_matches": true,
+    "explorer_transaction_type_matches": true,
+    "sequencer_block_id_matches": true,
+    "sequencer_block_is_finalized": true,
+    "sequencer_transaction_block_matches": true,
+    "sequencer_transaction_hash_matches": true,
+    "sequencer_transaction_type_matches": true,
+    "three_or_more_finalized_overlaps_match": true
+  },
   "component": "settlement-program",
-  "endpoint": "https://testnet.lez.logos.co",
+  "confirmation_depth": 59,
+  "explorer_urls": {
+    "block": "https://explorer.testnet.lez.logos.co/block/4035",
+    "transaction": "https://explorer.testnet.lez.logos.co/transaction/d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad"
+  },
+  "finality": "Finalized",
   "kind": "program-deployment",
-  "last_block_at_preflight": 4034,
-  "lez_release": "v0.2.4",
-  "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401",
   "network": "lez-testnet",
+  "network_identity": {
+    "channel_id": "0101010101010101010101010101010101010101010101010101010101010101",
+    "lez_release": "v0.2.4",
+    "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401"
+  },
+  "observations": {
+    "explorer_latest_finalized": {
+      "bedrock_status": "Finalized",
+      "block_id": 4094,
+      "hash": "931395904036d933abb60707cd8059686eefecd0ec5b8c7d5adf268e6eac0812",
+      "timestamp": 1786519643488
+    },
+    "indexer_finalized_lag_blocks": 0,
+    "lag_scan_complete": true,
+    "newest_sequencer_finalized_at_scan": 4094,
+    "overlapping_finalized_blocks": [
+      {
+        "block_id": 4094,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "931395904036d933abb60707cd8059686eefecd0ec5b8c7d5adf268e6eac0812",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "931395904036d933abb60707cd8059686eefecd0ec5b8c7d5adf268e6eac0812"
+      },
+      {
+        "block_id": 4093,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "47bbd2c21b07e70a88461e5d52c041ac4afad9c7b35128d5db643f7212fbec3f",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "47bbd2c21b07e70a88461e5d52c041ac4afad9c7b35128d5db643f7212fbec3f"
+      },
+      {
+        "block_id": 4092,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "3aaba9bd44c522a150b393577289cad874dff2793c740dc8595993a6d2d38a04",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "3aaba9bd44c522a150b393577289cad874dff2793c740dc8595993a6d2d38a04"
+      }
+    ],
+    "sequencer_head": {
+      "bedrock_status": "Pending",
+      "block_id": 4153,
+      "hash": "27a852c632139e21dc70b36ac6fdf061b63b4d4ea64c64b951812c33ace7c88d",
+      "prev_block_hash": "aba79a3f852d2a07b34d31401aa8ec364798ed13f40de58360cac1de0479c895",
+      "timestamp": 1786523190114,
+      "transaction_count": 1
+    }
+  },
+  "observed_at_utc": "2026-08-12T08:27:21+00:00",
   "program_id": "fb83bbb4c6140cb07e9a206d67e96a496bd395eed231e0f6158a672549e9a75c",
   "release_commit": "3c3054f59358864ca3ce93578e6d874778f1e230",
-  "reproduce": "RISC0_DEV_MODE=0 scripts/deploy-lez-testnet.sh",
-  "risc0_dev_mode": 0,
-  "status": "verified",
-  "submitted": true,
-  "timestamp_utc": "2026-08-12T06:28:20+00:00",
-  "transaction": "d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad"
+  "required_confirmation_depth": 3,
+  "schema_version": 1,
+  "services": {
+    "explorer": "https://explorer.testnet.lez.logos.co",
+    "indexer": "server-side behind official explorer; no public endpoint discovered",
+    "sequencer": "https://testnet.lez.logos.co"
+  },
+  "status": "finalized",
+  "transaction": "d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad",
+  "transaction_type": "ProgramDeployment",
+  "verifier": {
+    "command": "python3 tools/lez_explorer.py reconcile --evidence evidence/testnet/settlement-program.json",
+    "result": "pass",
+    "source": "tools/lez_explorer.py",
+    "source_commit": "e4a33e36cfce8b9e8547ee4aa8612d0b948dd20b"
+  }
 }
