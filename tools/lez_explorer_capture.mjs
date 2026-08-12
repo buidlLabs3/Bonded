@@ -52,6 +52,22 @@ export function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+export function capturePaths(outputDir, name) {
+  const directory = path.resolve(outputDir);
+  if (fs.existsSync(directory)) {
+    const details = fs.lstatSync(directory);
+    if (details.isSymbolicLink() || !details.isDirectory()) {
+      throw new Error("capture output must be a real directory");
+    }
+  }
+  const png = path.join(directory, `${name}.png`);
+  const sidecar = path.join(directory, `${name}.json`);
+  if (fs.existsSync(png) || fs.existsSync(sidecar)) {
+    throw new Error("capture output files already exist; evidence is immutable");
+  }
+  return { directory, png, sidecar };
+}
+
 function bounded(operation, timeout, label) {
   let timer;
   const deadline = new Promise((_, reject) => {
@@ -187,8 +203,7 @@ export async function waitForRenderedPage(cdp, options) {
 }
 
 export async function capture(options) {
-  const outputDir = path.resolve(options.outputDir);
-  if (fs.existsSync(outputDir)) throw new Error("output directory already exists; evidence is immutable");
+  const output = capturePaths(options.outputDir, options.name);
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "bonded-lez-chrome-"));
   fs.chmodSync(profile, 0o700);
   const chrome = spawn(options.chrome, [
@@ -262,13 +277,24 @@ export async function capture(options) {
     await stopChrome(chrome);
     await removeProfile(profile);
   }
-  fs.mkdirSync(path.dirname(outputDir), { recursive: true, mode: 0o755 });
-  fs.mkdirSync(outputDir, { mode: 0o755 });
+  fs.mkdirSync(path.dirname(output.directory), { recursive: true, mode: 0o755 });
+  const createdDirectory = !fs.existsSync(output.directory);
+  fs.mkdirSync(output.directory, { recursive: true, mode: 0o755 });
+  const created = [];
   try {
-    fs.writeFileSync(path.join(outputDir, record.screenshot), png, { flag: "wx", mode: 0o644 });
-    fs.writeFileSync(path.join(outputDir, `${options.name}.json`), `${JSON.stringify(record, null, 2)}\n`, { flag: "wx", mode: 0o644 });
+    fs.writeFileSync(output.png, png, { flag: "wx", mode: 0o644 });
+    created.push(output.png);
+    fs.writeFileSync(output.sidecar, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx", mode: 0o644 });
+    created.push(output.sidecar);
   } catch (error) {
-    fs.rmSync(outputDir, { recursive: true, force: true });
+    for (const file of created) fs.rmSync(file, { force: true });
+    if (createdDirectory) {
+      try {
+        fs.rmdirSync(output.directory);
+      } catch {
+        // Preserve a concurrently populated directory.
+      }
+    }
     throw error;
   }
   return record;

@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
+  capturePaths,
   parseArguments,
   sha256,
   validatePage,
@@ -39,6 +43,28 @@ test("arguments and hashes are deterministic and fail closed", () => {
     "--name", "../escape",
     "--expected", tx,
   ]), /name/);
+});
+
+test("distinct immutable captures may share one evidence directory", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "bonded-capture-test-"));
+  try {
+    const first = capturePaths(root, "transaction");
+    fs.writeFileSync(first.png, "first");
+    fs.writeFileSync(first.sidecar, "{}");
+    const second = capturePaths(root, "block");
+    assert.equal(second.directory, root);
+    assert.throws(() => capturePaths(root, "transaction"), /immutable/);
+
+    const symlink = `${root}-link`;
+    fs.symlinkSync(root, symlink);
+    try {
+      assert.throws(() => capturePaths(symlink, "other"), /real directory/);
+    } finally {
+      fs.unlinkSync(symlink);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("render readiness uses exact DOM state instead of a load event", async () => {
