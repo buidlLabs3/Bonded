@@ -3,7 +3,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseArguments, sha256, validatePage } from "../tools/lez_explorer_capture.mjs";
+import {
+  parseArguments,
+  sha256,
+  validatePage,
+  waitForRenderedPage,
+} from "../tools/lez_explorer_capture.mjs";
 
 const tx = "d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad";
 
@@ -34,4 +39,25 @@ test("arguments and hashes are deterministic and fail closed", () => {
     "--name", "../escape",
     "--expected", tx,
   ]), /name/);
+});
+
+test("render readiness uses exact DOM state instead of a load event", async () => {
+  const url = `https://explorer.testnet.lez.logos.co/transaction/${tx}`;
+  const states = [
+    { text: "Loading", ready: "interactive", url },
+    { text: `${tx}\nProgram Deployment Transaction`, ready: "complete", url },
+  ];
+  const cdp = {
+    async call(method) {
+      assert.equal(method, "Runtime.evaluate");
+      return { result: { value: JSON.stringify(states.shift()) } };
+    },
+  };
+  const rendered = await waitForRenderedPage(cdp, {
+    url,
+    expected: [tx, "Program Deployment Transaction"],
+    timeout: 5_000,
+  });
+  assert.equal(rendered.ready, "complete");
+  assert.equal(states.length, 0);
 });

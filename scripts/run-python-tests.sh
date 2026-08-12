@@ -15,4 +15,5 @@ python3 -m unittest -v \
     tests/test_lez_bond.py \
     tests/test_lez_wallet_bootstrap.py \
     tests/test_lez_wallet_provision.py \
-    tests/test_lez_wallet_evidence.py
+    tests/test_lez_wallet_evidence.py \
+    tests/test_traceability_gate.py

@@ -44,6 +44,9 @@ jobs:
       - name: Run CLI and Basecamp asset tests
         run: scripts/run-python-tests.sh
 
+      - name: Reject unsupported testnet traceability claims
+        run: python3 tools/traceability_gate.py
+
       - name: Run bond program tests
         run: cargo test --locked --manifest-path programs/bonded-inbox/Cargo.toml
 

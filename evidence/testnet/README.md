@@ -20,6 +20,11 @@ identifier mismatches all fail qualification. `evidence.schema.json` documents
 the common finalized observation contract; the gate enforces the cross-file and
 live-network rules that JSON Schema cannot express.
 
+`python3 tools/traceability_gate.py` is part of ordinary CI. While no requirement
+claims `verified-testnet`, it validates the matrix vocabulary and uniqueness. If
+any row makes that claim, the command also requires this entire offline evidence
+inventory to pass; a single transaction artifact cannot promote a requirement.
+
 Place sanitized `inbox.json`, `vault.json`, and `settlement.json` profile evidence
 here only after independently deploying each profile. Each record must include a
 status from `docs/deployment/evidence-status.md`, profile, network/version, NPK,

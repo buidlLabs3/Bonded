@@ -53,10 +53,13 @@ export function sha256(value) {
 }
 
 function bounded(operation, timeout, label) {
-  return Promise.race([
-    operation,
-    delay(timeout).then(() => { throw new Error(`DevTools command timed out: ${label}`); }),
-  ]);
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = globalThis.setTimeout(
+      () => reject(new Error(`DevTools command timed out: ${label}`)), timeout
+    );
+  });
+  return Promise.race([operation, deadline]).finally(() => globalThis.clearTimeout(timer));
 }
 
 async function waitForDevtools(portFile, chrome, timeout) {
@@ -161,6 +164,28 @@ async function removeProfile(profile) {
   throw lastError;
 }
 
+export async function waitForRenderedPage(cdp, options) {
+  const deadline = Date.now() + options.timeout;
+  let rendered = null;
+  while (Date.now() < deadline) {
+    const evaluation = await bounded(cdp.call("Runtime.evaluate", {
+      expression: "JSON.stringify({text: document.body?.innerText || '', ready: document.readyState, url: location.href})",
+      returnByValue: true,
+    }), Math.min(options.timeout, 10_000), "DOM evaluation");
+    rendered = JSON.parse(evaluation.result.value);
+    const complete = rendered.ready === "complete" && rendered.url === options.url;
+    const hasExpected = options.expected.every((value) => rendered.text.includes(value));
+    const notFound = NOT_FOUND_MARKERS.some((marker) => rendered.text.toLowerCase().includes(marker));
+    if (complete && hasExpected && !notFound) return rendered;
+    await delay(250);
+  }
+  if (rendered?.url !== options.url) {
+    throw new Error("explorer navigation did not complete on the exact requested URL");
+  }
+  validatePage(options.url, rendered?.text || "", options.expected);
+  throw new Error("explorer document did not reach complete ready state");
+}
+
 export async function capture(options) {
   const outputDir = path.resolve(options.outputDir);
   if (fs.existsSync(outputDir)) throw new Error("output directory already exists; evidence is immutable");
@@ -200,17 +225,8 @@ export async function capture(options) {
         options.timeout,
         ({ frame }) => frame.id === navigation.frameId && frame.url === options.url,
       );
-      await cdp.waitFor("Page.loadEventFired", options.timeout);
     }
-    await delay(2_000);
-    const evaluation = await bounded(cdp.call("Runtime.evaluate", {
-      expression: "JSON.stringify({text: document.body.innerText, ready: document.readyState, url: location.href})",
-      returnByValue: true,
-    }), options.timeout, "DOM evaluation");
-    const rendered = JSON.parse(evaluation.result.value);
-    if (rendered.ready !== "complete" || rendered.url !== options.url) {
-      throw new Error("explorer navigation did not complete on the exact requested URL");
-    }
+    const rendered = await waitForRenderedPage(cdp, options);
     validatePage(options.url, rendered.text, options.expected);
     const metrics = await bounded(cdp.call("Page.getLayoutMetrics"), options.timeout, "layout metrics");
     const width = Math.ceil(metrics.cssContentSize.width);

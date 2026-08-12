@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "url": "https://explorer.testnet.lez.logos.co/transaction/d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad",
+  "expected_rendered_text": [
+    "d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad",
+    "Program Deployment Transaction",
+    "370032 bytes"
+  ],
+  "rendered_text_sha256": "93cce5522f22796bcf13a74a2ab7276747b40638020634eb4ef2c887df087430",
+  "screenshot": "deployment-transaction.png",
+  "screenshot_sha256": "c8870086c5b0de68b72343936ff6c4edb9ac75f8501f5e8d2895f9116f748f6d",
+  "screenshot_bytes": 47039,
+  "dimensions": {
+    "width": 765,
+    "height": 737
+  },
+  "browser": "Google Chrome 146 headless via DevTools Protocol",
+  "fresh_profile": true,
+  "observed_at_utc": "2026-08-12T12:16:00Z"
+}

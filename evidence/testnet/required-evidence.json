@@ -6,12 +6,12 @@
       "id": "settlement-program-deployment",
       "kind": "program-deployment",
       "observations": [
-        "evidence/testnet/settlement-program.json",
-        "evidence/testnet/audits/settlement-program-independent.json"
+        "evidence/testnet/deployment/settlement-program-primary.json",
+        "evidence/testnet/audits/settlement-program-independent-confirmed.json"
       ],
       "operation": "program-deployment",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/deployment-20260812-independent/deployment-block.json",
+        "block": "evidence/testnet/screenshots/deployment-20260812-independent-block/deployment-block.json",
         "transaction": "evidence/testnet/screenshots/deployment-20260812-independent/deployment-transaction.json"
       },
       "transaction_type": "ProgramDeployment"
