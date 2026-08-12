@@ -98,6 +98,35 @@ check them immediately before a lifecycle run. Only public account IDs intended
 for evidence may be recorded. Private account IDs, NPK/VPK material, and wallet
 history remain redacted unless the evidence contract explicitly requires them.
 
+The bootstrap already creates the three public lifecycle roles. Register each
+role and fund the sender through the official FFI one operation at a time:
+
+```bash
+export BONDED_PROVISION_EVIDENCE=evidence/testnet/candidates/wallet-provisioning.json
+for role in sender owner sink; do
+  RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+  python3 tools/lez_wallet_provision.py --submit \
+    --wallet-source "$BONDED_LEZ_SOURCE" \
+    --wallet-home "$LEE_WALLET_HOME_DIR" \
+    --evidence "$BONDED_PROVISION_EVIDENCE" \
+    --role "$role" register
+done
+RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+python3 tools/lez_wallet_provision.py --submit \
+  --wallet-source "$BONDED_LEZ_SOURCE" \
+  --wallet-home "$LEE_WALLET_HOME_DIR" \
+  --evidence "$BONDED_PROVISION_EVIDENCE" \
+  --role sender fund
+```
+
+Each returned hash is journaled before finality polling, allowing the exact
+operation to resume after a network interruption without resubmission. The
+candidate records the canonical public-transaction byte hash, finalized block,
+and authoritative before/after account state. Explorer validation remains a
+separate promotion step. A process interruption during the submit call leaves an
+explicit `submitting` entry and blocks automatic retry until wallet/sequencer
+state is reconciled, preventing an ambiguous second funding claim.
+
 ## Program Deployment
 
 Inspect the exact guest before authorization:

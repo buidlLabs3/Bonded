@@ -427,15 +427,20 @@ def scan_native_log(path: Path) -> dict:
     return {"captured_output_sha256": hashlib.sha256(data).hexdigest(), "captured_output_bytes": len(data)}
 
 
-def wait_for_finalized(transaction: str, timeout: float) -> dict:
+def wait_for_finalized(transaction: str, timeout: float, expected_kind: str = "PrivacyPreserving") -> dict:
+    if expected_kind not in lez_explorer.TRANSACTION_VARIANTS.values():
+        raise BondAdapterError(f"unsupported transaction kind: {expected_kind}")
     deadline = time.monotonic() + timeout
     last_status = "not-indexed"
     while time.monotonic() < deadline:
         result = lez_explorer.rpc_call("getTransaction", [transaction])
         if isinstance(result, list) and len(result) == 2 and isinstance(result[1], int):
             raw = base64.b64decode(result[0], validate=True)
-            if not raw or raw[0] != 1:
-                raise BondAdapterError("sequencer returned a non-privacy-preserving transaction")
+            kind = lez_explorer.TRANSACTION_VARIANTS.get(raw[0]) if raw else None
+            if kind != expected_kind:
+                raise BondAdapterError(
+                    f"sequencer returned {kind or 'unknown'} instead of {expected_kind}"
+                )
             computed = hashlib.sha256(raw[1:]).hexdigest()
             if computed != transaction:
                 raise BondAdapterError("sequencer transaction bytes do not match wallet hash")
@@ -446,7 +451,7 @@ def wait_for_finalized(transaction: str, timeout: float) -> dict:
             if last_status == "Finalized":
                 return {
                     "transaction": transaction,
-                    "transaction_type": "PrivacyPreserving",
+                    "transaction_type": kind,
                     "serialized_transaction_sha256": computed,
                     "serialized_transaction_bytes": len(raw) - 1,
                     "block": result[1],
