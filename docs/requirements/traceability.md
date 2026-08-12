@@ -35,6 +35,7 @@ does not imply an official upstream integration, LEZ proof, or testnet result.
 | BOND-02 | Rejected goes to fixed sink, never owner | 09, 10 | C++ and Rust invariant tests | verified-local |
 | BOND-03 | Expired and failed delivery return full bond | 09, 10 | C++ and Rust lifecycle tests | verified-local |
 | BOND-04 | Classification alone cannot confiscate funds | 12 | triage and inbox adversarial tests | verified-local |
+| BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20 | Locked RISC Zero ELF build and deployment-client tests; live inclusion pending | verified-local |
 | INBOX-01 | Signed immutable policy and sender preflight | 05, 11 | signature/version/hash tests | verified-local |
 | INBOX-02 | Trusted bypass, rate limits, one attachment | 07, 11 | intake and service tests | verified-local |
 | PRIV-01 | No content, keys, attachments, or history in logs/on-chain | 05, 19 | telemetry redaction and asset tests | verified-local |

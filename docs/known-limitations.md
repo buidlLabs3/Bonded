@@ -4,9 +4,10 @@
   test doubles. Official upstream adapters are not yet bound.
 - The official Logos wallet module currently exposes a work-in-progress Ethereum
   API, not the required shielded LEZ NPK/ISK surface.
-- The Rust bond core is allocation-free logic, not a deployed LEZ guest wrapper.
-- Testnet identities, program IDs, transactions, proofs, CU measurements, and
-  three-profile deployment evidence have not been collected.
+- The real LEZ guest and program-deployment path do not yet provide a wallet/Core
+  invocation adapter or an end-to-end bond execution proof.
+- Three independent testnet identities, agent-profile deployments, bond
+  invocation proofs, and CU measurements have not been collected.
 - `scripts/e2e-real-proof.sh` intentionally exits nonzero even when
   `RISC0_DEV_MODE=0` until the real sequencer environment is provisioned.
 - Basecamp QML assets have static checks but not live host/replica, screen-reader,

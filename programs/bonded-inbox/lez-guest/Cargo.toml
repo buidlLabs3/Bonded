@@ -1,0 +1,25 @@
+[package]
+name = "bonded-inbox-lez-guest"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "bonded_inbox"
+path = "src/main.rs"
+
+[dependencies]
+authenticated_transfer_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", rev = "47eba256479f6f785acbd138834340703cd03401" }
+bonded-inbox-program = { path = ".." }
+clock_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", rev = "47eba256479f6f785acbd138834340703cd03401" }
+lee_core = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", rev = "47eba256479f6f785acbd138834340703cd03401" }
+risc0-zkvm = { version = "=3.0.5", default-features = false, features = ["std"] }
+
+[workspace]
+
+[profile.release]
+overflow-checks = true
+panic = "abort"
+lto = true
+codegen-units = 1

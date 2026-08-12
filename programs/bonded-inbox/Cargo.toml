@@ -8,6 +8,10 @@ publish = false
 [lib]
 crate-type = ["lib"]
 
+[dependencies]
+borsh = { version = "=1.6.1", features = ["derive"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+
 [profile.release]
 overflow-checks = true
 panic = "abort"

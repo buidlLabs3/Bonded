@@ -15,12 +15,12 @@ signed/versioned inbox policies, encrypted storage, persisted message and bond
 state machines, spending approvals, safe local triage, signed A2A cards and paid
 task coordination, and exactly 21 profile-scoped default skills. It also ships
 an idempotent headless operations CLI, Basecamp QML assets, recovery primitives,
-an allocation-free Rust bond-program core, and local conformance tests.
+a pinned RISC Zero LEZ settlement guest, and local conformance tests.
 
-The official Logos Messaging and Storage adapters, shielded LEZ wallet and guest
-wrapper, live Basecamp replica, three testnet deployments, CU measurements,
-narrated video, and `RISC0_DEV_MODE=0` evaluator environment remain release
-gates. Local adapters are never represented as testnet evidence. See
+The official Logos Messaging and Storage adapters, shielded LEZ wallet/runtime
+binding, live Basecamp replica, three agent-profile deployments, contract
+invocation proofs, CU measurements, and narrated video remain release gates.
+Local adapters are never represented as testnet evidence. See
 `docs/known-limitations.md` and `docs/requirements/traceability.md` for the exact
 qualification state.
 
@@ -48,7 +48,8 @@ nix develop --command bash scripts/run-service-tests.sh
 nix develop --command bash scripts/run-second-half-tests.sh
 nix develop --command bash scripts/run-skill-runtime-tests.sh
 scripts/run-python-tests.sh
-cargo test --manifest-path programs/bonded-inbox/Cargo.toml
+cargo test --locked --manifest-path programs/bonded-inbox/Cargo.toml
+cargo check --locked --manifest-path programs/bonded-inbox/lez-guest/Cargo.toml
 nix build .#generate -L
 ```
 
@@ -102,6 +103,27 @@ Basecamp assets live under `basecamp/`; the owner workflow is documented in
 `docs/owner-guide.md`. The 21-operation reference is
 `docs/reference/default-skills.md`, and the local end-to-end test command is
 `nix develop --command bash scripts/demo-local.sh`.
+
+## LEZ Testnet Program
+
+The deployment path targets the official LEZ v0.2.4 testnet ABI and fails closed
+if the endpoint's built-in program IDs drift from that release.
+
+```bash
+python3 tools/lez_testnet.py preflight
+RISC0_DEV_MODE=0 scripts/build-lez-program.sh
+RISC0_DEV_MODE=0 scripts/deploy-lez-testnet.sh
+```
+
+The final command publishes the settlement ELF to the public testnet and writes
+sanitized inclusion evidence under `evidence/testnet/`. Program publication is
+an unsigned LEZ transaction and does not read a wallet seed. The build requires
+Docker, `cargo-risczero`, `r0vm`, Rust, and network access on its first run.
+
+Publishing the guest is not equivalent to deploying the Inbox, Vault, and
+Settlement agent profiles. Those profiles require official Core integrations,
+three independent shielded identities, an owner public key, and successful
+testnet contract invocations. See `docs/deployment/lez-testnet.md`.
 
 ## Security
 
