@@ -1,0 +1,89 @@
+{
+  "completed_case_ids": [
+    "duplicate-transaction-rejected",
+    "insufficient-funds-rejected",
+    "invalid-program-rejected",
+    "official-wallet-program-deployment"
+  ],
+  "network_identity": {
+    "lez_release": "v0.2.4",
+    "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401",
+    "standalone_channel": "isolated-per-test"
+  },
+  "observed_at_utc": "2026-08-12T13:49:38+00:00",
+  "official_wallet": {
+    "binary_sha256": "349347e89c2b3bd8a925cc2bc911ea13e7aa593daca69aeabc9027cf033d6538",
+    "binary_size": 27615480,
+    "source_commit": "47eba256479f6f785acbd138834340703cd03401",
+    "source_repository": "https://github.com/logos-blockchain/logos-execution-zone.git"
+  },
+  "required_case_ids": [
+    "duplicate-transaction-rejected",
+    "insufficient-funds-rejected",
+    "invalid-program-rejected",
+    "official-wallet-private-transfer-real-proof",
+    "official-wallet-program-deployment"
+  ],
+  "risc0_dev_mode": 0,
+  "schema_version": 1,
+  "scope": "local-standalone-not-public-testnet-evidence",
+  "status": "qualification-in-progress",
+  "tests": [
+    {
+      "block_ids": [],
+      "captured_log_bytes": 819,
+      "captured_log_sha256": "27d6da8a0e82affb306ddad7c8c8f425590b466b4c368b7dff96a57ab4aa2560",
+      "elapsed_seconds": 26.631,
+      "id": "duplicate-transaction-rejected",
+      "official_transaction_debug_sha256": [],
+      "proof_mode": "negative-validation",
+      "status": "passed",
+      "transaction_hashes": [],
+      "upstream_test": "tests::replay_transactions_are_rejected_in_different_blocks"
+    },
+    {
+      "block_ids": [],
+      "captured_log_bytes": 1714,
+      "captured_log_sha256": "3f13a83e0630c22c8fb0ed8888ba242b0e9a0639a06c27edcacce3d48be5aa5c",
+      "elapsed_seconds": 157.191,
+      "id": "insufficient-funds-rejected",
+      "official_transaction_debug_sha256": [],
+      "proof_mode": "negative-validation",
+      "status": "passed",
+      "transaction_hashes": [],
+      "upstream_test": "public::failed_transfer_with_insufficient_balance"
+    },
+    {
+      "block_ids": [],
+      "captured_log_bytes": 3982,
+      "captured_log_sha256": "a3f1981a8d96bf9980c864620c99f05ff79f8f48fc1cfcc93a6e5fe5750fd188",
+      "elapsed_seconds": 189.556,
+      "id": "invalid-program-rejected",
+      "official_transaction_debug_sha256": [],
+      "proof_mode": "negative-validation",
+      "status": "passed",
+      "transaction_hashes": [
+        "99690ba72601b0adc59b3048127204c80fffb465cce91625d219162b09e0f965"
+      ],
+      "upstream_test": "deploy_invalid_program_fails"
+    },
+    {
+      "block_ids": [
+        13
+      ],
+      "captured_log_bytes": 3993,
+      "captured_log_sha256": "55a5456c9f948482f15d734c2253562db796ab7cb53e766cb49a43f10de3eaac",
+      "elapsed_seconds": 268.898,
+      "id": "official-wallet-program-deployment",
+      "official_transaction_debug_sha256": [
+        "1e979c151ec0f9b62e76a10a27ad69ffb885ca4d54bbc28e1700d38d07b5506a"
+      ],
+      "proof_mode": "unsigned-program-deployment",
+      "status": "passed",
+      "transaction_hashes": [
+        "0e54eaba8074d403af150d8617bc33c5eaef3b20812dd552a3b82c1ef9fee8ce"
+      ],
+      "upstream_test": "deploy_and_execute_program"
+    }
+  ]
+}
