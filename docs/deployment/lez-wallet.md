@@ -73,6 +73,9 @@ The bootstrap wrapper calls the official FFI, writes the recovery phrase without
 printing it, and creates distinct sender, owner, and sink public identities.
 Use a new absolute path and immediately transfer the recovery phrase from the
 generated `0600` file into an approved secret manager.
+Bootstrap writes the pinned upstream polling defaults and uses five initial
+leader-calibration samples, matching the upstream integration-fixture bound;
+it does not change the endpoint, finality, or transaction-polling contract.
 
 ```bash
 export LEE_WALLET_HOME_DIR=/absolute/private/path/bonded-lez-testnet-wallet

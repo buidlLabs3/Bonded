@@ -36,6 +36,22 @@ class FfiCreateWalletOutput(ctypes.Structure):
     _fields_ = [("wallet", ctypes.c_void_p), ("mnemonic", ctypes.c_void_p)]
 
 
+def wallet_config(profile: dict) -> dict:
+    return {
+        "sequencers": [
+            {"sequencer_addr": profile["sequencer_url"], "basic_auth": None}
+        ],
+        "seq_poll_timeout": "12s",
+        "seq_tx_poll_max_blocks": 5,
+        "seq_poll_max_retries": 5,
+        "seq_block_poll_max_amount": 100,
+        "multi_sequencer_client_config": {
+            "distribution_limit": 1,
+            "calibration_limit": 5,
+        },
+    }
+
+
 def validate_target(path: Path) -> Path:
     if not path.is_absolute():
         raise BootstrapError("wallet home must be an absolute path")
@@ -125,6 +141,12 @@ def create_wallet(args) -> dict:
         statistics = staging / "statistics.json"
         recovery = staging / "recovery-phrase.txt"
         account_manifest = staging / "public-accounts.json"
+        write_private(
+            config,
+            (json.dumps(wallet_config(profile), indent=2, sort_keys=True) + "\n").encode(
+                "utf-8"
+            ),
+        )
         lib = ctypes.CDLL(provenance["ffi_library"], mode=ctypes.RTLD_LOCAL)
         _bind(lib)
         with lez_bond.captured_native_output() as captured:

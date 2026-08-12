@@ -18,6 +18,20 @@ SPEC.loader.exec_module(bootstrap)
 
 
 class WalletBootstrapTests(unittest.TestCase):
+    def test_bootstrap_config_is_exact_official_testnet_with_bounded_calibration(self):
+        profile = bootstrap.lez_wallet.load_network_profile(
+            REPO / "config/lez-testnet-network.json"
+        )
+        config = bootstrap.wallet_config(profile)
+        self.assertEqual(
+            config["sequencers"],
+            [{"sequencer_addr": profile["sequencer_url"], "basic_auth": None}],
+        )
+        self.assertEqual(config["multi_sequencer_client_config"], {
+            "distribution_limit": 1,
+            "calibration_limit": 5,
+        })
+
     def test_target_must_be_absolute_external_and_new(self):
         with self.assertRaisesRegex(bootstrap.BootstrapError, "absolute"):
             bootstrap.validate_target(Path("relative-wallet"))
