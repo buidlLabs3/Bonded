@@ -51,10 +51,14 @@ explorer reaches the block is `disputed` and blocks downstream testnet claims.
 
 ```bash
 python3 tools/lez_explorer.py reconcile \
-  --verifier-commit "$(git rev-parse HEAD)"
+  --verifier-commit "$(git rev-parse HEAD)" \
+  --observer primary-release-audit \
+  --evidence evidence/testnet/deployment/settlement-program-primary.json
 ```
 
 The verifier rejects HTML error/loading/not-found content, mismatched block and
 transaction identifiers, wrong type, pending finality, bytecode differences,
 insufficient confirmation depth, and canonical overlap disagreement. See
 `docs/deployment/lez-incident-template.md` if a later check fails.
+It creates a new evidence file exclusively and refuses to replace an existing
+observation.

@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import struct
+import tempfile
 import unittest
 import urllib.error
 from argparse import Namespace
@@ -28,6 +29,15 @@ def page(*resources):
 
 
 class ExplorerVerifierTests(unittest.TestCase):
+    def test_evidence_writer_is_immutable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "observer" / "evidence.json"
+            lez.atomic_json(output, {"status": "finalized"})
+            self.assertEqual(json.loads(output.read_text()), {"status": "finalized"})
+            with self.assertRaises(FileExistsError):
+                lez.atomic_json(output, {"status": "disputed"})
+            self.assertEqual(json.loads(output.read_text()), {"status": "finalized"})
+
     def test_rpc_retries_transport_only_and_rejects_malformed_json(self):
         response = mock.MagicMock()
         response.__enter__.return_value.read.return_value = b'{"result":"ok"}'

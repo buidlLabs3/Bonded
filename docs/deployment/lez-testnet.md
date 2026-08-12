@@ -69,8 +69,12 @@ read-only canonical verifier with the current full verifier commit:
 ```bash
 python3 tools/lez_explorer.py reconcile \
   --verifier-commit "$(git rev-parse HEAD)" \
-  --evidence evidence/testnet/settlement-program.json
+  --observer primary-release-audit \
+  --evidence evidence/testnet/deployment/settlement-program-primary.json
 ```
+
+Evidence paths are immutable. Use a new observer-specific path for each
+reconciliation; the verifier refuses to overwrite any prior observation.
 
 A successful verifier result contains hashes, IDs, block/finality, exact public
 URLs, source revisions, confirmation depth, and a multi-block canonical-chain
