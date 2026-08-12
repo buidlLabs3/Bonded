@@ -2,9 +2,11 @@
 
 ## Purpose
 
-This file is the execution plan for taking Bonded Inbox from an empty repository
-to a complete LP-0008 submission. It is a plan only; none of the implementation
-tasks below have been started.
+This file is the execution plan for taking the current Bonded Inbox repository
+to a complete LP-0008 submission. It is a plan and acceptance contract, not a
+claim that listed work is complete. Existing implementation and evidence must be
+re-evaluated against every exit criterion below; an artifact created earlier is
+not grandfathered into a stronger verification state.
 
 The product brief is `../README.md`. The external acceptance baseline is the
 official [LP-0008 specification](https://github.com/logos-co/lambda-prize/blob/master/prizes/LP-0008.md).
@@ -22,7 +24,9 @@ The project is complete only when all of the following are true:
 - All LP-0008 default Storage, Messaging, Blockchain, A2A, and Meta skills are
   implemented and documented.
 - Inbox, Vault, and Settlement profiles are reproducibly deployed on LEZ testnet
-  as the required Messaging, Storage, and Blockchain agent deployments.
+  as the required Messaging, Storage, and Blockchain agent deployments, and
+  every claimed on-chain operation resolves by exact hash on the official LEZ
+  testnet explorer and in its finalized block.
 - Spending controls, owner approval, encrypted owner communication, recovery,
   failure isolation, replay protection, and idempotent settlement are verified.
 - At least three LP-0008 illustrative use cases and all Bonded Inbox demo flows
@@ -78,10 +82,77 @@ configuration, and persistent state are separate per deployment.
   or local patches. Any unavoidable patch needs an ADR and upstream issue link.
 - Use test doubles only below integration boundaries. Release evidence must use
   the actual Logos modules and actual LEZ proof generation.
+- Treat sequencer submission, sequencer RPC inclusion, indexer ingestion,
+  explorer rendering, and finalization as different states. Never collapse them
+  into one `verified` status.
+- Do not call a LEZ transaction testnet-verified from a locally computed hash,
+  a `sendTransaction` response, a sequencer `getTransaction` response, a block
+  number, a screenshot, or a private receipt alone.
 - Never use real-value or production credentials in development, tests, CI, or
   recorded demos.
 - Do not mark a financial path complete until retry, duplicate, crash, and
   partial-failure behavior is tested.
+
+## LEZ Explorer Validation Contract
+
+The official public explorer for this plan is
+`https://explorer.testnet.lez.logos.co`. Its pinned v0.2.4 route contract is:
+
+- `/transaction/<64-character-hex-hash>` for transaction details;
+- `/block/<numeric-block-id>` for the containing block;
+- `/account/<account-id>` for public account state/history when the operation
+  legitimately exposes a public account.
+
+A transaction may be labeled `explorer-validated` only when all of these checks
+pass against the same network observation:
+
+1. The official sequencer returns the exact transaction hash and containing
+   block, and the returned transaction bytes/type match the submitted operation.
+2. The official explorer/indexer has caught up to at least the containing block;
+   an indexer that is behind, stalled, or connected to a different chain makes
+   the result pending, not passing.
+3. A fresh unauthenticated browser session opens the exact transaction URL and
+   renders the expected hash and transaction type without `Transaction not
+   found`, an error page, or an unresolved loading state.
+4. The exact block URL renders the expected block ID, contains the transaction
+   hash, and reports the upstream finality state required by the pinned release.
+5. The transaction remains resolvable after the configured confirmation depth
+   and again during the release audit. Reorged, pruned, or disappearing results
+   fail the gate.
+6. Machine-readable evidence and a browser screenshot agree on network, hash,
+   type, block ID/hash, finality, program/account references, UTC observation
+   time, source commit, and explorer URLs. Sensitive witness, identity, seed,
+   key, message, and attachment material is excluded.
+7. A second verifier can repeat the lookup from a clean network/browser context
+   without repository-local state or credentials.
+
+The evidence state machine is:
+
+`built-local -> submitted -> sequencer-included -> indexer-seen ->`
+`explorer-validated -> finalized`
+
+Only `explorer-validated` or `finalized` can satisfy a public testnet transaction
+requirement. A later failed recheck moves the artifact back to `disputed` until
+the chain/indexer mismatch is explained and a canonical transaction is proven.
+
+### Current Evidence Correction
+
+As observed on 2026-08-12, the official explorer renders `Transaction not found`
+for transaction
+`d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad`
+and `Block not found` for block `4035`, even though the sequencer RPC previously
+returned that association. Therefore:
+
+- `evidence/testnet/settlement-program.json` is only
+  `sequencer-included-unreconciled` evidence;
+- it must not satisfy `BOND-05`, deployment, explorer, demo, release, or
+  submission gates in its current form;
+- Chunk 20A must determine whether this is indexer lag, a divergent/noncanonical
+  sequencer view, reset/pruning, wrong network assumptions, or invalid
+  transaction construction before any replacement claim is made; and
+- the existing transaction must not be resubmitted blindly. First reconcile the
+  explorer/indexer tip and canonical block history, then use the official wallet
+  path if a replacement transaction is required.
 
 ## Delivery Waves
 
@@ -92,7 +163,9 @@ configuration, and persistent state are separate per deployment.
 | 2 | 05-09 | Messaging, storage, wallet, bond program, settlement foundations |
 | 3 | 10-14 | Complete inbox product, all default skills, A2A coordination |
 | 4 | 15-17 | Deployment CLI, Basecamp integration, operational resilience |
-| 5 | 18-20 | Full verification, security/performance evidence, testnet release |
+| 5 | 18-19 | Full local/standalone verification and security review |
+| 5R | 20A-20F | Corrective explorer-validated LEZ testnet transaction track |
+| 5Q | 20 | Performance, CU, and final testnet qualification |
 | 6 | 21-22 | Reproducible demos, documentation, and submission |
 
 Chunks in the same wave may run in parallel only after their shared dependencies
@@ -353,7 +426,11 @@ limits.
 
 **Work:**
 
-- Integrate the verified LEZ wallet/account API and confirmation/finality model.
+- Integrate the pinned official LEZ wallet/account transaction builder, proof
+  path, and confirmation/finality model. A direct raw sequencer submission may
+  exist only as a diagnostic tool and cannot produce release evidence.
+- Persist separate submitted, sequencer-included, indexer-seen,
+  explorer-validated, finalized, disputed, and failed transaction states.
 - Implement `wallet.balance`, `wallet.send`, and `wallet.history` without
   exposing private wallet history beyond the authorized owner response.
 - Implement `program.query`, `program.call`, and `program.deploy` with canonical
@@ -372,7 +449,8 @@ service, and ledger reconciliation tests.
 **Exit criteria:** below-limit operations execute autonomously; above-limit
 operations never execute before valid approval; timeout, denial, concurrent
 spend, retry, and restart cases preserve limits; each profile has an independent
-shielded test account.
+shielded test account; no adapter reports final success before the configured
+finality state, and public testnet success additionally requires Chunk 20F.
 
 ---
 
@@ -394,7 +472,9 @@ shielded test account.
 - Make settlement terminal, idempotent, amount-safe, replay-protected, and robust
   to duplicate proofs/transactions and late/conflicting decisions.
 - Implement client-side proof/transaction creation, confirmation tracking,
-  reconciliation, and private receipt material.
+  reconciliation, and private receipt material through the official wallet path.
+  Track the submitted hash through sequencer, indexer, explorer, and finality;
+  never treat a locally computed hash or RPC response as explorer validation.
 - Measure initial CU cost for every instruction and add standalone-sequencer
   program tests with `RISC0_DEV_MODE=0`.
 
@@ -403,7 +483,9 @@ suite, threat notes, and initial CU report.
 
 **Exit criteria:** conservation and destination invariants hold under property/
 fuzz tests; owner-profit attempts and double settlement are impossible; every
-bond terminal path succeeds on a real standalone sequencer with real proofs.
+bond terminal path succeeds on a real standalone sequencer with real proofs;
+public testnet qualification remains pending until the full Chunk 20D matrix is
+finalized and explorer-validated.
 
 ---
 
@@ -418,7 +500,8 @@ bond terminal path succeeds on a real standalone sequencer with real proofs.
 - Implement bond confirmation before delivery to the review queue.
 - Consume authenticated accepted/rejected/expired/delivery-failed instructions
   and submit exactly one legal settlement action.
-- Add deadline scheduling, failed-delivery compensation, confirmation polling,
+- Add deadline scheduling, failed-delivery compensation, sequencer/indexer/
+  explorer/finality polling with explicit intermediate states,
   stuck-transaction recovery, and chain/local reconciliation after restart.
 - Generate signed private receipts with outcome, amount, program/transaction
   reference, policy commitment, timestamps, and verification instructions.
@@ -430,7 +513,9 @@ schema/verifier, and fault-injection tests.
 
 **Exit criteria:** all four settlement paths complete exactly once; process
 termination at every persistence/network boundary recovers safely; failed
-processing cannot strand a valid sender bond.
+processing cannot strand a valid sender bond; a transaction missing from the
+official explorer remains pending/disputed and cannot generate a successful
+receipt or release evidence.
 
 ---
 
@@ -662,13 +747,17 @@ lowest useful layer and in a realistic end-to-end environment.
   weakening the required default-branch green result.
 - Map each traceability row to stable test IDs and retain sanitized artifacts on
   failure.
+- Keep local/standalone verification separate from public testnet qualification.
+  CI may prove code correctness locally, but only Chunk 20F may promote a public
+  transaction requirement to `verified-testnet`.
 
 **Deliverables:** complete automated suite, CI workflows, coverage/traceability
 report, and evaluator-mode test command.
 
 **Exit criteria:** all traceability rows have passing automated evidence or a
 documented manual evidence step; a clean evaluator-style clone runs the stated
-command without modification; default-branch CI is green.
+command without modification; default-branch CI is green; public LEZ rows remain
+pending until the explorer evidence gate passes.
 
 ---
 
@@ -703,9 +792,271 @@ mitigations are explicit.
 
 ---
 
+## Chunk 20A - Reconcile Sequencer, Indexer, and Explorer Canonical State
+
+**Depends on:** 18, 19, and the LEZ Explorer Validation Contract
+
+**Objective:** explain the current sequencer/explorer disagreement and establish
+one canonical public testnet observation path before creating more transactions.
+
+**Work:**
+
+- Pin the official sequencer, explorer, indexer API if publicly exposed, LEZ
+  release commit, explorer build/version, expected chain identity/genesis, and
+  finality semantics in the upstream compatibility matrix. Do not infer that two
+  services share a chain merely because their hostnames share a domain.
+- Capture a time-correlated observation from the sequencer and explorer:
+  health, latest block ID/hash/timestamp, indexer sync/stall status where
+  available, and several overlapping finalized block IDs/hashes.
+- Compare the sequencer block containing each candidate transaction with the
+  explorer's canonical block at the same height. Classify each mismatch as
+  indexer lag, stalled indexer, divergent chain, reset/pruning, reorg, wrong
+  endpoint, invalid transaction encoding, or unresolved upstream incident.
+- Recheck the current deployment transaction and block only after the explorer
+  tip reaches or passes block 4035. Record whether the exact hash appears in the
+  explorer transaction page and the exact block contains it.
+- Define bounded indexer-lag and confirmation timeouts from observed testnet
+  behavior. A timeout produces `pending-indexer` or `disputed`, never `verified`.
+- Add an incident record for unresolved upstream inconsistency with raw sanitized
+  request/response timestamps and enough information for Logos maintainers to
+  reproduce it. Do not work around a divergent chain by choosing whichever
+  endpoint makes the evidence pass.
+- Reclassify existing evidence and traceability to its proven state. Preserve the
+  old artifact for audit history; never edit an old hash/block into looking like
+  a successful explorer validation.
+
+**Deliverables:** canonical-network observation report, sequencer/indexer tip
+comparison, current-transaction reconciliation report, incident template, and
+an evidence status vocabulary shared by scripts and traceability.
+
+**Exit criteria:** at least three overlapping finalized block ID/hash pairs agree
+between the sequencer and explorer; indexer freshness can be measured; the
+current deployment is either independently explorer-validated or explicitly
+retained as disputed/unreconciled with a documented cause; no task relies on
+block 4035 until the explorer itself resolves it.
+
+---
+
+## Chunk 20B - Official LEZ Wallet and Transaction Construction Path
+
+**Depends on:** 08, 09, 20A
+
+**Objective:** replace ad hoc transaction submission with the pinned official
+LEZ wallet/client path used for canonical program deployment and shielded calls.
+
+**Work:**
+
+- Pin the exact official LEZ wallet CLI/library and all transaction/proof
+  dependencies to the same release as the public testnet. Record the supported
+  program-deployment, account initialization, funding, public invocation, and
+  privacy-preserving invocation commands/APIs.
+- Implement one adapter around the official wallet transaction builder. It must
+  obtain hashes from the signed/serialized transaction it actually submits, not
+  manufacture an expected hash from a parallel custom encoder.
+- Keep the existing encoder only as a conformance oracle until byte-for-byte
+  vectors match official wallet output; it cannot be the release submission path.
+- Configure the official testnet endpoint, network domain, proof mode, finality,
+  and indexer/explorer URLs from one validated network profile. Refuse mixed
+  endpoints or unpinned network metadata.
+- Provision disposable testnet-only identities through the official wallet/KMS
+  path, store secrets outside the repository, redact commands/logs, and document
+  funding/faucet prerequisites. Never print or persist seeds in evidence.
+- Add dry-run/inspect output with transaction kind, program ID, account IDs that
+  are intentionally public, payload digest, proof mode, expected fee/CU, and
+  network identity before an operator authorizes submission.
+- Add local standalone-sequencer tests for official-wallet deployment and real
+  privacy-preserving invocation with `RISC0_DEV_MODE=0`, including malformed
+  instruction, wrong network, insufficient funds, and duplicate submission.
+- Fail closed if the pinned wallet cannot construct the transaction type needed
+  by the current guest. Document the upstream gap instead of falling back to an
+  unaudited raw RPC payload for release evidence.
+
+**Deliverables:** pinned official wallet adapter/CLI wrapper, network profile,
+secret-safe identity/funding runbook, official-vs-local serialization vectors,
+and standalone real-proof integration tests.
+
+**Exit criteria:** an official-wallet-built program deployment and a shielded
+program call both succeed on the pinned standalone stack with real proofs; their
+serialized digests and hashes are reproducible; logs contain no secret material;
+the release path contains no direct handcrafted `sendTransaction` shortcut.
+
+---
+
+## Chunk 20C - Explorer-Validated Settlement Program Publication
+
+**Depends on:** 20A, 20B
+
+**Objective:** obtain a canonical settlement-program deployment transaction that
+an evaluator can independently validate on the official LEZ testnet explorer.
+
+**Work:**
+
+- Rebuild the release guest from a clean clone with locked dependencies and
+  `RISC0_DEV_MODE=0`; record source commit, binary digest/size, toolchain, and
+  program/image ID before submission.
+- Query the explorer/indexer for the program ID and candidate transaction first.
+  Reuse an existing canonical deployment only if the explorer validates its exact
+  binary digest/size and program ID; otherwise prepare one new deployment.
+- Submit through the official wallet path from Chunk 20B. Capture sanitized
+  official-wallet output, submitted bytes digest, returned hash, and UTC time.
+- Poll both sequencer and indexer independently. Require matching transaction
+  type `Program Deployment Transaction`, exact hash, containing block ID/hash,
+  bytecode size, program ID derivation, and finality.
+- Open the exact explorer transaction and block URLs in a fresh browser context.
+  Save full-page screenshots after loading completes and assert expected text;
+  an HTTP 200 page containing `Transaction not found` is a failure.
+- Recheck after confirmation depth and after at least one independent later
+  observation. If the explorer loses the transaction, mark evidence disputed and
+  stop downstream testnet work.
+- Store a new immutable evidence artifact. Keep the old `d033...` artifact clearly
+  labeled unreconciled; never overwrite it with the new identifiers.
+
+**Deliverables:** canonical program deployment JSON, raw sanitized sequencer and
+indexer observations, transaction/block explorer screenshots, SHA-256 manifest,
+and public explorer links.
+
+**Exit criteria:** a clean browser resolves the exact deployment hash and block;
+the explorer shows `Program Deployment Transaction` and the correct bytecode
+size; the block contains the hash and is finalized; an independent verifier
+repeats the checks; traceability may then mark program publication
+`verified-testnet`.
+
+---
+
+## Chunk 20D - Explorer-Validated Bond Lifecycle Matrix
+
+**Depends on:** 09, 10, 20C
+
+**Objective:** prove the deployed program actually executes every financial path
+on public LEZ testnet, rather than proving only that bytecode was uploaded.
+
+**Required transaction matrix:**
+
+| Case | Required transactions | Required state/balance assertion |
+|---|---|---|
+| Acceptance | funded sender/account initialization as needed; bond `Initialize`; owner-authorized `Settle(RefundAccepted)` | exact bond locked once, then full amount returned to sender; owner receives zero |
+| Rejection | fresh bond `Initialize`; owner-authorized `Settle(SinkRejected)` | full amount reaches the fixed sink; sender is not refunded; owner receives zero |
+| Expiry | fresh bond `Initialize`; post-deadline `Settle(RefundExpired)` | early attempt fails without state change; valid expiry returns full amount to sender |
+| Delivery failure | fresh bond `Initialize`; owner-authorized `Settle(RefundDeliveryFailed)` | full amount returns to sender; owner and sink receive zero |
+| Replay/conflict | replay each terminal call and submit one conflicting outcome | no second successful state transition or value movement; failed attempts are recorded separately and never presented as successful explorer transactions |
+
+**Work:**
+
+- Use fresh unique bond/message/policy commitments for each case and record a
+  privacy-safe case ID to transaction mapping.
+- Build and submit every successful call through the official shielded wallet
+  path with real proofs and `RISC0_DEV_MODE=0`. Record actual CU/fee data.
+- Capture pre-lock, post-lock, and post-settlement account/state observations.
+  Prove conservation from authoritative wallet/indexer state without disclosing
+  private keys, message content, attachments, or unnecessary identity history.
+- Require each successful `Initialize` and `Settle` hash to pass the complete LEZ
+  Explorer Validation Contract. Link each settlement to its corresponding lock,
+  program ID, outcome, final block, and private receipt.
+- Exercise early expiry, unauthorized settlement, wrong destination, wrong PDA,
+  duplicate, and conflicting-outcome attempts. Prove rejection locally and from
+  wallet/sequencer responses; do not require a nonexistent explorer transaction
+  for a request rejected before canonical inclusion.
+- Re-run all exact explorer URLs after confirmation depth and during the release
+  audit. Any missing successful transaction invalidates that matrix row.
+
+**Deliverables:** per-case immutable evidence bundles, transaction map, redacted
+proof/CU logs, explorer screenshots and URLs, account/state reconciliation, and
+a machine-readable lifecycle summary.
+
+**Exit criteria:** every successful transaction in all four positive paths is
+finalized and independently explorer-validated; balances/state prove the required
+destination and amount; owner profit is zero; replay/conflict attempts cause no
+second movement; no case relies only on a deployment transaction or local model.
+
+---
+
+## Chunk 20E - Explorer-Validated Wallet, Profile, and Use-Case Transactions
+
+**Depends on:** 13-17, 20D
+
+**Objective:** attach independently viewable public LEZ transactions to the
+Blockchain profile, paid coordination, and every submission claim that moves
+testnet value.
+
+**Work:**
+
+- Deploy Inbox, Vault, and Settlement as separate runtime profiles with separate
+  shielded identities, configuration, data directories, and least-privilege
+  capabilities. Do not equate program publication with an agent deployment.
+- For the Settlement profile, execute and explorer-validate at minimum one
+  official-wallet funding/transfer, one `program.deploy` or canonical reference,
+  one `program.call`, one `program.query` state check, and one wallet-history
+  reconciliation. Queries without transactions need signed/machine-readable
+  state evidence, not fabricated transaction hashes.
+- Execute one below-limit autonomous transfer and one above-limit transfer after
+  signed owner approval. Prove the unanswered/denied case submits no transaction
+  by correlating proposal IDs, wallet history, account state, and elapsed expiry.
+- Execute a paid A2A task between independent agents and validate its payment or
+  escrow/refund transactions on the explorer. Link the A2A task state to exact
+  transaction hashes without placing task content on-chain.
+- Execute the on-chain event alerter against a real finalized Bonded transaction
+  and show one deduplicated private owner notification containing the public hash.
+- Ensure every evidence bundle identifies the responsible profile, release
+  commit, program ID, transaction URLs, block URLs, finality, and independent
+  verifier result while excluding seeds and private histories.
+
+**Deliverables:** three profile evidence bundles, spending-control transaction
+bundle, paid-task transaction bundle, event-alerter correlation evidence, and a
+public explorer link index.
+
+**Exit criteria:** each profile is independently running and reproducible; every
+successful value-moving claim has a finalized explorer transaction; every
+non-execution claim proves absence without inventing a hash; paid-task and owner
+approval flows reconcile application state, wallet state, and explorer state.
+
+---
+
+## Chunk 20F - Automated Explorer Evidence Gate and Independent Audit
+
+**Depends on:** 20A-20E
+
+**Objective:** make unverifiable, stale, mismatched, or screenshot-only evidence
+fail CI/release qualification automatically.
+
+**Work:**
+
+- Define a versioned JSON schema requiring evidence status, network identity,
+  sequencer/indexer/explorer endpoints, source commit, operation/case/profile,
+  transaction hash/type, block ID/hash/finality, program/account references,
+  explorer URLs, UTC observations, confirmation depth, artifact hashes, and
+  independent verifier metadata.
+- Build a read-only verifier that fetches each exact transaction and block from
+  official services, parses explorer-rendered state, rejects error/loading/not-
+  found pages, cross-checks all identifiers, and emits deterministic results.
+- Add fixtures for valid transactions, transaction-not-found with HTTP 200,
+  block-not-found, indexer lag, divergent block hash, wrong transaction type,
+  wrong program ID, pending finality, reorg/disappearance, malformed evidence,
+  duplicate hash reused for different operations, and leaked secret fields.
+- Require two observations separated by confirmation depth and a clean-browser
+  screenshot. Screenshots are supporting artifacts only; machine validation is
+  authoritative and both must agree.
+- Add a release/evaluator command that verifies every required matrix row and
+  profile bundle without submitting anything. Network outages yield
+  `verification-unavailable`, never success.
+- Run an independent clean-clone audit from a separate browser/network context.
+  Record verifier version, time, results, and hashes of reviewed artifacts.
+- Make traceability generation reject `verified-testnet` unless a passing,
+  current explorer evidence bundle exists. Recheck immediately before video,
+  release tag, and submission authorization.
+
+**Deliverables:** evidence schema, read-only explorer verifier, adversarial
+fixtures/tests, CI/release gate, evidence index, and independent audit report.
+
+**Exit criteria:** the current `d033...` evidence fails until the explorer resolves
+it; every required new positive transaction passes exact transaction and block
+lookups twice; tampered/stale/mismatched evidence fails; a clean-clone audit
+reproduces the complete public transaction matrix without access to secrets.
+
+---
+
 ## Chunk 20 - Performance, CU, and Testnet Qualification
 
-**Depends on:** 18, 19
+**Depends on:** 18, 19, 20A-20F
 
 **Objective:** establish operational limits and produce reproducible LEZ testnet
 deployment evidence.
@@ -722,7 +1073,10 @@ deployment evidence.
 - Deploy Inbox/Messaging, Vault/Storage, and Settlement/Blockchain agents with
   separate identities and reproducible commands on LEZ testnet.
 - Capture sanitized network/version, Agent Card, program ID, transaction/proof,
-  deployment log, timestamp, and verification evidence for each profile.
+  deployment log, timestamp, exact transaction/block explorer URLs, finality,
+  and independent verification evidence for each profile.
+- Run Chunk 20F's read-only gate over the deployment, complete bond lifecycle,
+  spending-control, paid-task, and profile bundles before signing qualification.
 - Repeat all release tests against the exact pinned release candidate.
 
 **Deliverables:** benchmark report, CU table with network/version/date,
@@ -731,7 +1085,10 @@ candidate manifest.
 
 **Exit criteria:** documented limits hold under target load; CU data covers every
 on-chain operation; all three independently identifiable testnet agents are live,
-discoverable, reproducible, and linked to sanitized evidence.
+discoverable, reproducible, and linked to sanitized evidence; every successful
+value-moving transaction is finalized and resolves on the official explorer by
+exact hash and block; the read-only evidence gate and independent audit both
+pass against the release candidate.
 
 ---
 
@@ -761,15 +1118,21 @@ named LP-0008 illustrative use cases.
   (Vault), **Paid skill marketplace / privacy-preserving agent pipeline**
   (attachment processing), and **On-chain event alerter** (bond/program event
   owner notifications).
+- Re-run the read-only explorer evidence gate immediately before recording and
+  show the exact successful transaction and block pages for deployment, bond
+  lock, settlement, and paid-task payment/refund in a fresh browser context.
 - Record a narrated video showing architecture, key decisions, all required
-  flows, testnet evidence, terminal output, and visible real proof generation.
+  flows, explorer-validated testnet evidence, terminal output, and visible real
+  proof generation.
 
 **Deliverables:** idempotent demo script, fixtures, expected-output checks,
 narration/run sheet, video, captions/transcript, and evidence index.
 
 **Exit criteria:** a clean-machine rehearsal succeeds without edits; all money,
 message, storage, approval, privacy, and recovery assertions pass; the recording
-meets Lambda narration and proof-visibility requirements.
+meets Lambda narration and proof-visibility requirements; every on-chain claim
+shown in the recording has a still-valid exact explorer URL in the evidence
+index.
 
 ---
 
@@ -792,8 +1155,12 @@ and ready for first-come-first-served evaluation.
   secrets/private artifacts, links, screenshots, and copy-paste commands.
 - Re-run the evaluator path from a fresh clone and archive CI, CU, testnet,
   deployment, and demo evidence against the release commit.
+- Re-run Chunk 20F from a clean network/browser context immediately before the
+  release tag and again before submission authorization. Any missing, disputed,
+  non-final, or mismatched explorer transaction blocks the release.
 - Fill every requirement traceability row and conduct an independent release
-  checklist review.
+  checklist review; remove `verified-testnet` from any row whose current explorer
+  artifact does not pass.
 - Prepare the Lambda Prize solution document/PR using the official template and
   include repository, release, video, three deployment, and evidence links.
 - Re-check prize status, terms, and submission limits immediately before the
@@ -805,8 +1172,9 @@ completed traceability matrix, evidence archive, and submission draft.
 
 **Exit criteria:** an independent reviewer can clone, build, deploy, operate, and
 run the demo solely from repository docs; every LP-0008 criterion points to
-specific passing evidence; the submission draft is ready for explicit owner
-approval.
+specific passing evidence; every on-chain claim resolves without credentials on
+the official explorer and its finalized block; the submission draft is ready for
+explicit owner approval.
 
 ---
 
@@ -815,6 +1183,19 @@ approval.
 Do not call the project complete until this table is entirely checked and linked
 to evidence in the traceability matrix.
 
+- [ ] Official sequencer and explorer/indexer agree on canonical finalized block
+      IDs/hashes; the current `d033...` / block 4035 mismatch is resolved or
+      explicitly remains disputed and unused.
+- [ ] Release transactions are constructed/submitted through the pinned official
+      LEZ wallet path with real proofs, not a handcrafted raw RPC shortcut.
+- [ ] Settlement program deployment resolves by exact hash and finalized block on
+      `https://explorer.testnet.lez.logos.co` from a clean browser context.
+- [ ] Every successful bond lock plus acceptance, rejection, expiry, and failed-
+      delivery settlement transaction is independently explorer-validated.
+- [ ] Spending-control and paid-A2A value-moving transactions are independently
+      explorer-validated and reconcile with wallet/application state.
+- [ ] Chunk 20F's read-only evidence gate and independent clean-clone audit pass;
+      screenshots, JSON, sequencer, indexer, and explorer observations agree.
 - [ ] Loadable Logos Core module; no upstream module modifications.
 - [ ] Independent shielded identity/funds for each agent.
 - [ ] Single-command headless deployment on a clean machine.
