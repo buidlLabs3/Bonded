@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenSSL REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 if(DEFINED ENV{LOGOS_MODULE_BUILDER_ROOT})
@@ -120,4 +121,21 @@ if(BUILD_TESTING)
     target_link_libraries(bonded_inbox_skill_runtime_tests PRIVATE OpenSSL::Crypto SQLite::SQLite3
                                                                      nlohmann_json::nlohmann_json)
     add_test(NAME bonded_inbox_skill_runtime_tests COMMAND bonded_inbox_skill_runtime_tests)
+
+    add_executable(bonded_inbox_local_benchmark
+        benchmarks/local_workloads.cpp
+        src/domain/state_machine.cpp
+        src/security/crypto.cpp
+        src/storage/database.cpp
+        src/integrations/memory_adapters.cpp
+        src/runtime/reliability.cpp
+        src/services/contact_rules.cpp
+        src/services/a2a_service.cpp
+        src/services/bond_service.cpp
+    )
+    target_include_directories(bonded_inbox_local_benchmark
+                               PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(bonded_inbox_local_benchmark PRIVATE OpenSSL::Crypto SQLite::SQLite3
+                                                               Threads::Threads
+                                                               nlohmann_json::nlohmann_json)
 endif()

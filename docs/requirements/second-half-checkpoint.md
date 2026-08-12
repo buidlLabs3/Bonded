@@ -14,7 +14,7 @@ submission-complete claim.
 | 17 | Redaction, breaker, bounded queue, reconciliation/runbook | `test_second_half` | Multi-process fault injection and restart evidence |
 | 18 | Fast CI matrix and conditional fail-closed real-proof job | `.github/workflows/ci.yml` | Provisioned self-hosted sequencer runner |
 | 19 | Threat/privacy/economic reviews, finding log, SPDX SBOM | `docs/security` | External dependency/audit qualification |
-| 20 | Local benchmark tool, defensive limits, empty CU/evidence gates | `tools/benchmark_local.py` | Measured CU and three testnet deployments |
+| 20 | Enforced local workload benchmark, defensive limits, empty CU/evidence gates | `tools/benchmark_local.py`, `benchmarks/local_workloads.cpp` | Measured CU, official multi-process qualification, and three testnet deployments |
 | 21 | Local evaluator script and three named use-case runbook | `scripts/demo-local.sh` | Real-proof rehearsal and narrated video |
 | 22 | README, SDK, owner, deployment, A2A, security, operations, limitations, traceability, local submission draft | documentation audit | Release tag, archived evidence, owner-authorized submission |
 
