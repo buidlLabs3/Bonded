@@ -61,8 +61,12 @@ python3 tools/lez_bond.py \
 Submission additionally requires `--submit`, `BONDED_LEZ_SUBMIT=YES`, and
 `RISC0_DEV_MODE=0`. Native wallet output is captured in a private temporary
 file, scanned for recovery/key material, reduced to its SHA-256 and byte count,
-and deleted. Output remains a sequencer-finalized candidate until the explorer
-gate independently promotes it.
+and deleted. The adapter journals `submitting` before entering the wallet FFI and
+persists the exact returned hash as `submitted` before finality polling. Repeating
+the identical command after a polling timeout observes that hash without sending
+another transaction. An interrupted `submitting` state blocks automatic retry
+until it is manually reconciled. Output remains a sequencer-finalized candidate
+until the explorer gate independently promotes it.
 
 ## Secret-Safe Wallet Setup
 

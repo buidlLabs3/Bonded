@@ -47,6 +47,23 @@ OUTCOMES = {
     "refund-expired": 2,
     "refund-delivery-failed": 3,
 }
+RESUME_BINDING_FIELDS = (
+    "schema_version",
+    "operation",
+    "outcome",
+    "network",
+    "network_identity",
+    "program_id",
+    "binary_sha256",
+    "binary_size",
+    "bond_id",
+    "accounts",
+    "instruction_word_count",
+    "instruction_words_sha256",
+    "proof_mode",
+    "fee_cu",
+    "official_wallet",
+)
 SECRET_MARKERS = lez_wallet.SENSITIVE_MARKERS + (
     "generated new private",
     "nullifier secret",
@@ -496,6 +513,47 @@ def _validate_relationships(operation: str, args, before: dict, after: dict) -> 
             raise BondAdapterError("settlement did not update terminal bond state")
 
 
+def _load_candidate(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise BondAdapterError("lifecycle evidence must be a regular file, not a symlink")
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise BondAdapterError(f"could not resume lifecycle evidence: {exc}") from exc
+    if not isinstance(document, dict):
+        raise BondAdapterError("lifecycle evidence must contain a JSON object")
+    if document.get("status") not in (
+        "submitting",
+        "submitted",
+        "official-wallet-sequencer-finalized-candidate",
+    ):
+        raise BondAdapterError("lifecycle evidence has an unsupported status")
+    return document
+
+
+def _validate_resume(candidate: dict, inspection: dict) -> None:
+    for field in RESUME_BINDING_FIELDS:
+        if candidate.get(field) != inspection.get(field):
+            raise BondAdapterError(
+                f"lifecycle evidence {field} does not match this exact call"
+            )
+    state = candidate.get("state")
+    if not isinstance(state, dict) or not isinstance(state.get("before"), dict):
+        raise BondAdapterError("lifecycle evidence omits the authoritative pre-call state")
+    if candidate["status"] in (
+        "submitted",
+        "official-wallet-sequencer-finalized-candidate",
+    ) and not HEX_32.fullmatch(str(candidate.get("transaction", ""))):
+        raise BondAdapterError("lifecycle evidence contains an invalid transaction hash")
+    if candidate["status"] == "official-wallet-sequencer-finalized-candidate":
+        if candidate.get("finality") != "Finalized" or not isinstance(
+            candidate.get("state", {}).get("after"), dict
+        ):
+            raise BondAdapterError("finalized lifecycle evidence is incomplete")
+
+
 def execute(args) -> dict:
     profile = lez_wallet.load_network_profile(args.profile.resolve(strict=True))
     provenance = lez_wallet.verify_source(args.wallet_source, profile)
@@ -575,24 +633,57 @@ def execute(args) -> dict:
             raise BondAdapterError("submission requires BONDED_LEZ_SUBMIT=YES")
         if os.environ.get("RISC0_DEV_MODE") != "0":
             raise BondAdapterError("RISC0_DEV_MODE must be exactly 0")
-        before = {name: ffi.snapshot(accounts[name]) for name in snapshot_names}
-        with captured_native_output() as captured:
-            transaction = ffi.submit(ordered, words, Path(program["binary"]))
+
+        evidence = _load_candidate(args.evidence)
+        if evidence is not None:
+            _validate_resume(evidence, inspection)
+            if evidence["status"] == "official-wallet-sequencer-finalized-candidate":
+                return evidence
+            if evidence["status"] == "submitting":
+                raise BondAdapterError(
+                    "lifecycle submission was interrupted before its transaction hash was "
+                    "journaled; reconcile wallet/sequencer state before any retry"
+                )
+        else:
+            before = {name: ffi.snapshot(accounts[name]) for name in snapshot_names}
+            evidence = {
+                **inspection,
+                "status": "submitting",
+                "state": {"before": before},
+                "prepared_at_utc": datetime.now(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat(),
+            }
+            lez_wallet.atomic_json(args.evidence, evidence)
+            with captured_native_output() as captured:
+                transaction = ffi.submit(ordered, words, Path(program["binary"]))
+            evidence.update(
+                {
+                    **captured,
+                    "status": "submitted",
+                    "transaction": transaction,
+                    "submitted_at_utc": datetime.now(timezone.utc)
+                    .replace(microsecond=0)
+                    .isoformat(),
+                }
+            )
+            lez_wallet.atomic_json(args.evidence, evidence)
+
+        before = evidence["state"]["before"]
+        transaction = evidence["transaction"]
         inclusion = wait_for_finalized(transaction, args.timeout)
         after = {name: ffi.snapshot(accounts[name]) for name in snapshot_names}
         _validate_relationships(args.operation, args, before, after)
-        evidence = {
-            **inspection,
-            **inclusion,
-            **captured,
-            "status": "official-wallet-sequencer-finalized-candidate",
-            "state": {"before": before, "after": after},
-            "observed_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-            "verification_boundary": (
-                "Official-wallet real-proof construction, canonical serialized hash, sequencer "
-                "finality, and state reconciliation only; explorer promotion is separate."
-            ),
-        }
+        evidence.update(inclusion)
+        evidence["status"] = "official-wallet-sequencer-finalized-candidate"
+        evidence["state"]["after"] = after
+        evidence["observed_at_utc"] = (
+            datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        )
+        evidence["verification_boundary"] = (
+            "Official-wallet real-proof construction, canonical serialized hash, sequencer "
+            "finality, and state reconciliation only; explorer promotion is separate."
+        )
         lez_wallet.atomic_json(args.evidence, evidence)
         return evidence
     finally:

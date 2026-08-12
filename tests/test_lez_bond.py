@@ -2,6 +2,8 @@
 
 import importlib.util
 import ctypes
+import json
+import os
 import tempfile
 import types
 import unittest
@@ -180,6 +182,180 @@ class BondWalletAdapterTests(unittest.TestCase):
         after["owner"]["balance"] = "8"
         with self.assertRaisesRegex(bond.BondAdapterError, "owner"):
             bond._validate_relationships("settle", args, before, after)
+
+    def test_timeout_resume_observes_original_hash_without_resubmission(self):
+        class FakeFfi:
+            submit_calls = 0
+            finalized = False
+
+            def __init__(self, _provenance, _wallet):
+                pass
+
+            def close(self):
+                pass
+
+            def account(self, value):
+                index = {"sender": 1, "owner": 2, "sink": 3}[value]
+                return bond.FfiBytes32.from_bytes(bytes([index]) * 32)
+
+            def pda(self, _program, domain, _bond_id):
+                index = 4 if domain == bond.STATE_SEED_DOMAIN else 5
+                return bond.FfiBytes32.from_bytes(bytes([index]) * 32)
+
+            def display_account(self, value):
+                raw = value.as_bytes()
+                names = {
+                    bytes([1]) * 32: "sender",
+                    bytes([2]) * 32: "owner",
+                    bytes([3]) * 32: "sink",
+                    bytes([4]) * 32: "state",
+                    bytes([5]) * 32: "escrow",
+                    bond.CLOCK_ACCOUNT: "clock",
+                }
+                return names[raw]
+
+            def snapshot(self, value):
+                name = self.display_account(value)
+                before = {
+                    "sender": ("100", "00" * 32, 0, "a"),
+                    "owner": ("7", "00" * 32, 0, "a"),
+                    "sink": ("0", "00" * 32, 0, "a"),
+                    "state": ("0", "00" * 32, 0, "a"),
+                    "escrow": ("0", "00" * 32, 0, "a"),
+                }
+                after = {
+                    **before,
+                    "sender": ("75", "00" * 32, 0, "a"),
+                    "state": ("0", bond.CANONICAL_PROGRAM_ID, 1, "b"),
+                    "escrow": (
+                        "25",
+                        bond.AUTHENTICATED_TRANSFER_PROGRAM_ID,
+                        0,
+                        "a",
+                    ),
+                }
+                balance, owner, data_size, digest = (
+                    after if self.finalized else before
+                )[name]
+                return {
+                    "account_id": name,
+                    "program_owner": owner,
+                    "balance": balance,
+                    "nonce": "0",
+                    "data_size": data_size,
+                    "data_sha256": digest,
+                }
+
+            def submit(self, _ordered, _words, _elf):
+                type(self).submit_calls += 1
+                return "ab" * 32
+
+        profile = {
+            "network": "lez-testnet",
+            "channel_id": "01" * 32,
+            "lez_release": "v0.2.4",
+            "release_commit": "upstream-commit",
+        }
+        provenance = {
+            "source_commit": "upstream-commit",
+            "ffi_header_sha256": "11" * 32,
+            "ffi_library_sha256": "22" * 32,
+        }
+        program = {
+            "program_id": bond.CANONICAL_PROGRAM_ID,
+            "binary_sha256": "33" * 32,
+            "binary_size": 10,
+            "binary": "unused.bin",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile_path = root / "profile.json"
+            elf = root / "guest.bin"
+            evidence_path = root / "candidate.json"
+            profile_path.write_text("{}", encoding="utf-8")
+            elf.write_bytes(b"guest")
+            args = types.SimpleNamespace(
+                profile=profile_path,
+                wallet_source=root,
+                wallet_home=root,
+                elf=elf,
+                program_id=bond.CANONICAL_PROGRAM_ID,
+                sender="sender",
+                owner="owner",
+                sink="sink",
+                bond_id="44" * 32,
+                operation="initialize",
+                message_commitment="55" * 32,
+                policy_commitment="66" * 32,
+                amount=25,
+                deadline_ms=1234,
+                submit=True,
+                timeout=1,
+                evidence=evidence_path,
+            )
+            inclusion = {
+                "transaction": "ab" * 32,
+                "transaction_type": "PrivacyPreserving",
+                "serialized_transaction_sha256": "ab" * 32,
+                "serialized_transaction_bytes": 100,
+                "block": 9,
+                "block_hash": "cd" * 32,
+                "finality": "Finalized",
+            }
+
+            def finalize(_transaction, _timeout):
+                FakeFfi.finalized = True
+                return inclusion
+
+            patches = (
+                mock.patch.object(bond.lez_wallet, "load_network_profile", return_value=profile),
+                mock.patch.object(bond.lez_wallet, "verify_source", return_value=provenance),
+                mock.patch.object(bond.lez_wallet, "verify_wallet_home", return_value={}),
+                mock.patch.object(bond, "verify_program", return_value=program),
+                mock.patch.object(bond, "OfficialWalletFfi", FakeFfi),
+            )
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                with mock.patch.object(
+                    bond,
+                    "wait_for_finalized",
+                    side_effect=bond.BondAdapterError("timed out"),
+                ):
+                    with mock.patch.dict(
+                        os.environ,
+                        {"BONDED_LEZ_SUBMIT": "YES", "RISC0_DEV_MODE": "0"},
+                    ):
+                        with self.assertRaisesRegex(bond.BondAdapterError, "timed out"):
+                            bond.execute(args)
+                submitted = json.loads(evidence_path.read_text(encoding="utf-8"))
+                self.assertEqual(submitted["status"], "submitted")
+                self.assertEqual(submitted["transaction"], "ab" * 32)
+                self.assertEqual(FakeFfi.submit_calls, 1)
+
+                with mock.patch.object(bond, "wait_for_finalized", side_effect=finalize):
+                    with mock.patch.dict(
+                        os.environ,
+                        {"BONDED_LEZ_SUBMIT": "YES", "RISC0_DEV_MODE": "0"},
+                    ):
+                        completed = bond.execute(args)
+                self.assertEqual(FakeFfi.submit_calls, 1)
+                self.assertEqual(
+                    completed["status"],
+                    "official-wallet-sequencer-finalized-candidate",
+                )
+                self.assertEqual(completed["transaction"], "ab" * 32)
+
+    def test_resume_rejects_any_changed_call_binding(self):
+        inspection = {field: field for field in bond.RESUME_BINDING_FIELDS}
+        candidate = {
+            **inspection,
+            "status": "submitted",
+            "transaction": "ab" * 32,
+            "state": {"before": {}},
+        }
+        bond._validate_resume(candidate, inspection)
+        candidate["bond_id"] = "different"
+        with self.assertRaisesRegex(bond.BondAdapterError, "bond_id"):
+            bond._validate_resume(candidate, inspection)
 
 
 if __name__ == "__main__":
