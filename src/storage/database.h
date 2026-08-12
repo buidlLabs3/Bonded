@@ -30,8 +30,16 @@ public:
     std::optional<InboxPolicy> latestPolicy(const std::string& inbox_id) const;
     bool createMessage(const MessageRecord& message, const std::string& idempotency_key);
     std::optional<MessageRecord> message(const std::string& message_id) const;
+    std::optional<MessageRecord> message(const std::string& message_id,
+                                         const std::string& idempotency_key) const;
     void updateMessage(const MessageRecord& message, std::uint64_t previous_revision);
+    bool createBond(const BondRecord& bond);
+    std::optional<BondRecord> bond(const std::string& bond_id) const;
+    bool settleBond(const BondRecord& bond);
+    std::size_t bondCount() const;
     void enqueue(const std::string& topic, const std::string& payload);
+    bool enqueueOnce(const std::string& deduplication_key, const std::string& topic,
+                     const std::string& payload);
     std::vector<OutboxRecord> pendingOutbox(std::size_t limit) const;
     void acknowledgeOutbox(std::int64_t id);
     void recordProcessedEvent(const std::string& event_id);

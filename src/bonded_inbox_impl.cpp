@@ -54,7 +54,7 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
         database_ = std::make_unique<bonded::Database>(
             std::filesystem::path(data_directory_) / "bonded-inbox.db");
         database_->migrate();
-        bonds_ = std::make_unique<bonded::BondService>();
+        bonds_ = std::make_unique<bonded::BondService>(*database_);
         inbox_ = std::make_unique<bonded::InboxService>(*database_, *bonds_);
         skills_ = std::make_unique<bonded::SkillRegistry>();
         skill_runtime_ = std::make_unique<bonded::SkillRuntime>(

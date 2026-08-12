@@ -20,7 +20,7 @@ does not imply an official upstream integration, LEZ proof, or testnet result.
 | SK-A2A | `card`, `discover`, `task`, `subscribe`, `cancel` | 13 | `tests/test_second_half.cpp`, runtime suite | verified-local |
 | SK-META | `skills`, `status`, `configure` | 14 | catalog union, signed configure tests | verified-local |
 | A2A-01 | Signed cards and A2A lifecycle over Logos Messaging | 13 | signed-card and paid-task local lifecycle | verified-local |
-| REL-01 | Recover from network interruption and restart | 03, 17 | `tests/test_main.cpp` SIGKILL/WAL/outbox/replay test and recovery runbook | verified-local |
+| REL-01 | Recover from network interruption and restart | 03, 17 | `tests/test_main.cpp` verifies SIGKILL/WAL/outbox replay plus pending-bond settlement and receipt deduplication across two service restarts | verified-local |
 | REL-02 | Unreachable owner cannot authorize spend | 08, 17 | approval timeout negative test | verified-local |
 | REL-03 | Skill failures are isolated | 04, 14 | failing external skill followed by healthy dispatch | verified-local |
 | PERF-01 | CU cost for every on-chain operation | 09, 20 | Dated CU report | planned |

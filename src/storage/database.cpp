@@ -86,11 +86,17 @@ void Database::migrate()
         execute("CREATE TABLE IF NOT EXISTS messages("
                 "id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, document TEXT NOT NULL, "
                 "revision INTEGER NOT NULL)");
+        execute("CREATE TABLE IF NOT EXISTS bonds("
+                "id TEXT PRIMARY KEY, document TEXT NOT NULL, outcome TEXT)");
         execute("CREATE TABLE IF NOT EXISTS outbox("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, payload TEXT NOT NULL, "
                 "attempts INTEGER NOT NULL DEFAULT 0, acknowledged INTEGER NOT NULL DEFAULT 0)");
+        execute("CREATE TABLE IF NOT EXISTS outbox_deduplication("
+                "deduplication_key TEXT PRIMARY KEY, outbox_id INTEGER NOT NULL UNIQUE, "
+                "FOREIGN KEY(outbox_id) REFERENCES outbox(id))");
         execute("CREATE TABLE IF NOT EXISTS processed_events("
                 "event_id TEXT PRIMARY KEY, processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+        execute("UPDATE schema_version SET version = 2 WHERE version < 2");
         execute("COMMIT");
     } catch (...) {
         execute("ROLLBACK");
@@ -144,6 +150,19 @@ std::optional<MessageRecord> Database::message(const std::string& message_id) co
     return std::nullopt;
 }
 
+std::optional<MessageRecord> Database::message(const std::string& message_id,
+                                               const std::string& idempotency_key) const
+{
+    Statement statement(db_, "SELECT document FROM messages "
+                             "WHERE id = ? AND idempotency_key = ?");
+    bindText(statement.get(), 1, message_id);
+    bindText(statement.get(), 2, idempotency_key);
+    if (sqlite3_step(statement.get()) == SQLITE_ROW) {
+        return Json::parse(columnText(statement.get(), 0)).get<MessageRecord>();
+    }
+    return std::nullopt;
+}
+
 void Database::updateMessage(const MessageRecord& message, std::uint64_t previous_revision)
 {
     Statement statement(db_, "UPDATE messages SET document = ?, revision = ? "
@@ -160,6 +179,57 @@ void Database::updateMessage(const MessageRecord& message, std::uint64_t previou
     }
 }
 
+bool Database::createBond(const BondRecord& bond)
+{
+    Statement statement(db_, "INSERT OR IGNORE INTO bonds(id, document, outcome) VALUES(?, ?, ?)");
+    bindText(statement.get(), 1, bond.id);
+    bindText(statement.get(), 2, Json(bond).dump());
+    if (bond.outcome.has_value()) {
+        bindText(statement.get(), 3, toString(*bond.outcome));
+    } else {
+        sqlite3_bind_null(statement.get(), 3);
+    }
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        throw DomainError(sqlite3_errmsg(db_));
+    }
+    return sqlite3_changes(db_) == 1;
+}
+
+std::optional<BondRecord> Database::bond(const std::string& bond_id) const
+{
+    Statement statement(db_, "SELECT document FROM bonds WHERE id = ?");
+    bindText(statement.get(), 1, bond_id);
+    if (sqlite3_step(statement.get()) == SQLITE_ROW) {
+        return Json::parse(columnText(statement.get(), 0)).get<BondRecord>();
+    }
+    return std::nullopt;
+}
+
+bool Database::settleBond(const BondRecord& bond)
+{
+    if (!bond.outcome.has_value()) {
+        throw DomainError("bond settlement outcome is required");
+    }
+    Statement statement(db_, "UPDATE bonds SET document = ?, outcome = ? "
+                             "WHERE id = ? AND outcome IS NULL");
+    bindText(statement.get(), 1, Json(bond).dump());
+    bindText(statement.get(), 2, toString(*bond.outcome));
+    bindText(statement.get(), 3, bond.id);
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        throw DomainError(sqlite3_errmsg(db_));
+    }
+    return sqlite3_changes(db_) == 1;
+}
+
+std::size_t Database::bondCount() const
+{
+    Statement statement(db_, "SELECT COUNT(*) FROM bonds");
+    if (sqlite3_step(statement.get()) != SQLITE_ROW) {
+        throw DomainError(sqlite3_errmsg(db_));
+    }
+    return static_cast<std::size_t>(sqlite3_column_int64(statement.get(), 0));
+}
+
 void Database::enqueue(const std::string& topic, const std::string& payload)
 {
     Statement statement(db_, "INSERT INTO outbox(topic, payload) VALUES(?, ?)");
@@ -167,6 +237,45 @@ void Database::enqueue(const std::string& topic, const std::string& payload)
     bindText(statement.get(), 2, payload);
     if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         throw DomainError(sqlite3_errmsg(db_));
+    }
+}
+
+bool Database::enqueueOnce(const std::string& deduplication_key, const std::string& topic,
+                           const std::string& payload)
+{
+    if (deduplication_key.empty()) {
+        throw DomainError("outbox deduplication key is required");
+    }
+    execute("BEGIN IMMEDIATE");
+    try {
+        Statement existing(db_, "SELECT 1 FROM outbox_deduplication "
+                                "WHERE deduplication_key = ?");
+        bindText(existing.get(), 1, deduplication_key);
+        if (sqlite3_step(existing.get()) == SQLITE_ROW) {
+            execute("COMMIT");
+            return false;
+        }
+
+        Statement outbox(db_, "INSERT INTO outbox(topic, payload) VALUES(?, ?)");
+        bindText(outbox.get(), 1, topic);
+        bindText(outbox.get(), 2, payload);
+        if (sqlite3_step(outbox.get()) != SQLITE_DONE) {
+            throw DomainError(sqlite3_errmsg(db_));
+        }
+        const auto outbox_id = sqlite3_last_insert_rowid(db_);
+
+        Statement marker(db_, "INSERT INTO outbox_deduplication(deduplication_key, outbox_id) "
+                              "VALUES(?, ?)");
+        bindText(marker.get(), 1, deduplication_key);
+        sqlite3_bind_int64(marker.get(), 2, outbox_id);
+        if (sqlite3_step(marker.get()) != SQLITE_DONE) {
+            throw DomainError(sqlite3_errmsg(db_));
+        }
+        execute("COMMIT");
+        return true;
+    } catch (...) {
+        execute("ROLLBACK");
+        throw;
     }
 }
 

@@ -70,16 +70,25 @@ MessageRecord InboxService::submit(const Submission& submission)
                           std::nullopt};
 
     if (!database_.createMessage(message, submission.idempotency_key)) {
-        const auto existing = database_.message(submission.message_id);
+        const auto existing = database_.message(submission.message_id, submission.idempotency_key);
         if (!existing.has_value()) {
-            throw DomainError("idempotency key belongs to another message");
+            throw DomainError("message or idempotency key belongs to another submission");
         }
-        return *existing;
+        if (existing->sender != message.sender || existing->policy_hash != message.policy_hash ||
+            existing->policy_version != message.policy_version ||
+            existing->bond_amount != message.bond_amount ||
+            existing->deadline_unix != message.deadline_unix) {
+            throw DomainError("conflicting duplicate message submission");
+        }
+        message = *existing;
     }
 
-    MessageStateMachine::transition(message, MessageState::BondPending, message.revision);
-    database_.updateMessage(message, message.revision - 1);
-    if (!submission.trusted_contact) {
+    if (message.state == MessageState::Created) {
+        const auto previous = message.revision;
+        MessageStateMachine::transition(message, MessageState::BondPending, previous);
+        database_.updateMessage(message, previous);
+    }
+    if (message.state == MessageState::BondPending && !submission.trusted_contact) {
         bonds_.lock(BondRecord{submission.bond_id,
                                message.id,
                                message.sender,
@@ -90,33 +99,57 @@ MessageRecord InboxService::submit(const Submission& submission)
                                message.deadline_unix,
                                std::nullopt});
     }
-    MessageStateMachine::transition(message, MessageState::Bonded, message.revision);
-    database_.updateMessage(message, message.revision - 1);
-    MessageStateMachine::transition(message, MessageState::DeliveryPending, message.revision);
-    database_.updateMessage(message, message.revision - 1);
-    database_.enqueue("bonded/intake/" + policy->inbox_id,
-                      Json{{"message_id", message.id}, {"sender", message.sender}}.dump());
-    MessageStateMachine::transition(message, MessageState::PendingReview, message.revision);
-    database_.updateMessage(message, message.revision - 1);
+    if (message.state == MessageState::BondPending) {
+        const auto previous = message.revision;
+        MessageStateMachine::transition(message, MessageState::Bonded, previous);
+        database_.updateMessage(message, previous);
+    }
+    if (message.state == MessageState::Bonded) {
+        const auto previous = message.revision;
+        MessageStateMachine::transition(message, MessageState::DeliveryPending, previous);
+        database_.updateMessage(message, previous);
+    }
+    if (message.state == MessageState::DeliveryPending) {
+        database_.enqueueOnce(
+            "intake:" + message.id, "bonded/intake/" + policy->inbox_id,
+            Json{{"message_id", message.id}, {"sender", message.sender}}.dump());
+        const auto previous = message.revision;
+        MessageStateMachine::transition(message, MessageState::PendingReview, previous);
+        database_.updateMessage(message, previous);
+    }
     return message;
 }
 
 MessageRecord InboxService::finish(MessageRecord message, MessageState decision)
 {
-    const auto previous = message.revision;
-    MessageStateMachine::transition(message, decision, previous);
-    message.settlement = MessageStateMachine::requiredSettlement(decision);
-    database_.updateMessage(message, previous);
+    const auto outcome = MessageStateMachine::requiredSettlement(decision);
+    if (message.state == MessageState::Settled) {
+        if (message.settlement != outcome) {
+            throw DomainError("conflicting terminal message settlement");
+        }
+        return message;
+    }
+    if (MessageStateMachine::isDecision(message.state)) {
+        if (message.state != decision || message.settlement != outcome) {
+            throw DomainError("conflicting terminal message settlement");
+        }
+    } else {
+        const auto previous = message.revision;
+        MessageStateMachine::transition(message, decision, previous);
+        message.settlement = outcome;
+        database_.updateMessage(message, previous);
+    }
 
     if (message.bond_amount > 0) {
-        const auto settlement = bonds_.settle("bond:" + message.id, *message.settlement);
-        database_.enqueue("bonded/receipt/" + message.sender,
-                          Json{{"message_id", message.id},
-                               {"outcome", toString(settlement.outcome)},
-                               {"destination", settlement.destination},
-                               {"amount", settlement.amount},
-                               {"duplicate", settlement.duplicate}}
-                              .dump());
+        const auto settlement = bonds_.settle("bond:" + message.id, outcome);
+        database_.enqueueOnce(
+            "receipt:" + message.id + ":" + toString(outcome),
+            "bonded/receipt/" + message.sender,
+            Json{{"message_id", message.id},
+                 {"outcome", toString(settlement.outcome)},
+                 {"destination", settlement.destination},
+                 {"amount", settlement.amount}}
+                .dump());
     }
     const auto decision_revision = message.revision;
     MessageStateMachine::transition(message, MessageState::Settled, decision_revision);

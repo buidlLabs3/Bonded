@@ -1,8 +1,8 @@
 #pragma once
 
 #include "domain/types.h"
+#include "storage/database.h"
 
-#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -19,14 +19,15 @@ struct SettlementResult {
 
 class BondService {
 public:
+    explicit BondService(Database& database);
     BondRecord lock(BondRecord bond);
     std::optional<BondRecord> get(const std::string& bond_id) const;
     SettlementResult settle(const std::string& bond_id, SettlementOutcome outcome);
     std::size_t size() const;
 
 private:
+    Database& database_;
     mutable std::mutex mutex_;
-    std::map<std::string, BondRecord> bonds_;
 };
 
 } // namespace bonded

@@ -6,6 +6,7 @@
 #include "services/inbox_service.h"
 #include "storage/database.h"
 
+#include <algorithm>
 #include <csignal>
 #include <filesystem>
 #include <functional>
@@ -165,6 +166,22 @@ void testDatabase()
     check(database.pendingOutbox(10).empty(), "outbox acknowledgement failed");
     database.recordProcessedEvent("event-1");
     check(database.hasProcessedEvent("event-1"), "processed-event record missing");
+
+    BondRecord bond{
+        "bond:m1", "m1", "sender", "owner", "sink", "policy", 50, 2000, std::nullopt};
+    check(database.createBond(bond), "bond was not created");
+    check(!database.createBond(bond), "duplicate bond was created");
+    check(database.bond("bond:m1").has_value() &&
+              Json(*database.bond("bond:m1")) == Json(bond),
+          "bond was not persisted");
+    bond.outcome = SettlementOutcome::RefundAccepted;
+    check(database.settleBond(bond), "bond settlement was not persisted");
+    check(!database.settleBond(bond), "bond settled twice");
+    check(database.bondCount() == 1, "persisted bond count is wrong");
+    check(database.enqueueOnce("receipt:m1", "receipt", "payload"),
+          "deduplicated outbox record was not created");
+    check(!database.enqueueOnce("receipt:m1", "receipt", "payload"),
+          "deduplicated outbox record was created twice");
 }
 
 void testProcessInterruptionRecovery()
@@ -264,7 +281,9 @@ void testProcessInterruptionRecovery()
 
 void testBondService()
 {
-    BondService bonds;
+    Database database(":memory:");
+    database.migrate();
+    BondService bonds(database);
     BondRecord bond{
         "bond:m1", "m1", "sender", "owner", "sink", "policy", 50, 2000, std::nullopt};
     bonds.lock(bond);
@@ -307,7 +326,7 @@ void testInboxLifecycle()
 {
     Database database(":memory:");
     database.migrate();
-    BondService bonds;
+    BondService bonds(database);
     InboxService inbox(database, bonds);
     const auto policy = signedPolicy();
     inbox.publishPolicy(policy);
@@ -322,6 +341,12 @@ void testInboxLifecycle()
     check(accepted.state == MessageState::Settled &&
               accepted.settlement == SettlementOutcome::RefundAccepted,
           "accepted message was not refunded and settled");
+    check(inbox.decide("message-1", MessageState::Accepted, false, false).revision ==
+              accepted.revision,
+          "duplicate owner decision changed terminal message state");
+    expectDomainError(
+        [&] { inbox.decide("message-1", MessageState::Rejected, true, false); },
+        "conflicting owner decision changed terminal message state");
 
     Submission spam{"inbox-alpha", "message-2", "idem-2", "sender-2", policy_hash,
                     "bond:message-2", 25, 1100, false, 0, 0, ""};
@@ -354,6 +379,70 @@ void testInboxLifecycle()
     expectDomainError([&] { inbox.submit(stale); }, "stale policy commitment was accepted");
 }
 
+void testInboxRestartRecovery()
+{
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("bonded-inbox-lifecycle-recovery-" + std::to_string(::getpid()));
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup()
+        {
+            std::error_code ignored;
+            std::filesystem::remove_all(root, ignored);
+        }
+    } cleanup{root};
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directory(root);
+    const auto database_path = root / "lifecycle.db";
+    const auto policy = signedPolicy();
+    const auto policy_hash = PolicyService::hash(policy);
+    const Submission submission{"inbox-alpha", "restart-message", "restart-idem", "sender",
+                                policy_hash, "bond:restart-message", 25, 1100, false, 0, 0, ""};
+
+    {
+        Database database(database_path);
+        database.migrate();
+        BondService bonds(database);
+        InboxService inbox(database, bonds);
+        inbox.publishPolicy(policy);
+        check(inbox.submit(submission).state == MessageState::PendingReview,
+              "restart fixture did not reach pending review");
+        check(bonds.size() == 1, "restart fixture did not persist its bond");
+    }
+
+    {
+        Database database(database_path);
+        database.migrate();
+        BondService bonds(database);
+        InboxService inbox(database, bonds);
+        check(bonds.get("bond:restart-message").has_value(),
+              "restart lost the pending message bond");
+        const auto settled =
+            inbox.decide("restart-message", MessageState::Accepted, false, false);
+        check(settled.state == MessageState::Settled &&
+                  settled.settlement == SettlementOutcome::RefundAccepted,
+              "restarted inbox could not settle its pending message");
+    }
+
+    {
+        Database database(database_path);
+        database.migrate();
+        BondService bonds(database);
+        InboxService inbox(database, bonds);
+        const auto settled =
+            inbox.decide("restart-message", MessageState::Accepted, false, false);
+        check(settled.state == MessageState::Settled &&
+                  bonds.get("bond:restart-message")->outcome ==
+                      SettlementOutcome::RefundAccepted,
+              "second restart did not preserve terminal settlement");
+        const auto outbox = database.pendingOutbox(20);
+        check(std::count_if(outbox.begin(), outbox.end(), [](const auto& record) {
+                  return record.topic == "bonded/receipt/sender";
+              }) == 1,
+              "restart duplicated the settlement receipt");
+    }
+}
+
 } // namespace
 
 int main()
@@ -364,6 +453,7 @@ int main()
         {"process recovery", testProcessInterruptionRecovery},
         {"bond service", testBondService},  {"skill registry", testSkillRegistry},
         {"inbox lifecycle", testInboxLifecycle},
+        {"inbox restart recovery", testInboxRestartRecovery},
     };
 
     std::size_t failures = 0;
