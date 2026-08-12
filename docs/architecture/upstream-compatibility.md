@@ -13,6 +13,7 @@ compatibility test and an ADR update.
 | LEZ sequencer testnet v0.2.4 | `47eba256479f6f785acbd138834340703cd03401` | `https://testnet.lez.logos.co`; channel ID `0101010101010101010101010101010101010101010101010101010101010101`; `getBlock` is a base64 Borsh `Block` and exposes Pending/Safe/Finalized status |
 | LEZ indexer testnet v0.2.4 | `47eba256479f6f785acbd138834340703cd03401` | Server-side dependency of the official explorer; no public testnet RPC endpoint was discovered, so freshness is measured from explorer finalized blocks against sequencer finalized blocks |
 | LEZ explorer testnet v0.2.4 | `47eba256479f6f785acbd138834340703cd03401` | `https://explorer.testnet.lez.logos.co`; exact `/transaction/<hash>` and `/block/<id>` pages expose typed indexer JSON through Leptos SSR resources |
+| Official LEZ wallet CLI/library v0.2.4 | `47eba256479f6f785acbd138834340703cd03401` | Canonical deployment and invocation builder; official CLI covers deployment/account/funding and public `WalletCore` covers generic public/privacy-preserving calls |
 | Logos Execution Zone programs v0.2.4 | `47eba256479f6f785acbd138834340703cd03401` | Authenticated-transfer and privacy-circuit IDs match the public sequencer on 2026-08-12 |
 | SPEL | `0cb7e0980535af619482cf1c823f4d394b3ebd61` | Reassess after bond-program spike; no dependency until it materially reduces proof/program risk |
 | A2A | `4f82944ddf6821b9d19bc4aa03a59acd8a09a4ce` | Bind the `lf.a2a.v1` schema over Logos Messaging; use current submitted/working/input-required/auth-required/terminal states |

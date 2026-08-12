@@ -1,0 +1,15 @@
+{
+  "channel_id": "0101010101010101010101010101010101010101010101010101010101010101",
+  "explorer_url": "https://explorer.testnet.lez.logos.co",
+  "indexer_url": null,
+  "lez_release": "v0.2.4",
+  "network": "lez-testnet",
+  "release_commit": "47eba256479f6f785acbd138834340703cd03401",
+  "required_confirmation_depth": 3,
+  "risc0_dev_mode": 0,
+  "schema_version": 1,
+  "sequencer_url": "https://testnet.lez.logos.co",
+  "source_repository": "https://github.com/logos-blockchain/logos-execution-zone.git",
+  "wallet_binary_relative": "target/release/wallet",
+  "wallet_package": "wallet"
+}

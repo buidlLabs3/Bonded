@@ -23,9 +23,15 @@ tips, overlapping canonical blocks, and historical classification.
 ## Program Publication
 
 Prerequisites are Rust, Docker, `cargo-risczero`, `r0vm`, Git, and initial
-network access for locked dependencies and the RISC Zero builder image.
-No seed phrase, private key, or faucet balance is needed for LEZ program
-publication.
+network access for locked dependencies and the RISC Zero builder image. The
+deployment transaction is unsigned and requires no faucet balance, but the
+official CLI still requires initialized wallet storage; protect its generated
+recovery phrase as described below.
+
+The release submission route is the pinned official wallet documented in
+`docs/deployment/lez-wallet.md`. The direct encoder below remains available for
+serialization conformance and historical diagnostics only; it is not authorized
+to create new release evidence.
 
 ```bash
 python3 tools/lez_testnet.py preflight
@@ -35,25 +41,28 @@ RISC0_DEV_MODE=0 scripts/build-lez-program.sh
 The build compiles `programs/bonded-inbox/lez-guest`, verifies the host bond
 model, computes the RISC Zero image ID, and copies the ignored ELF to
 `build/lez/bonded_inbox.bin`. Inspect and commit the exact source before sending
-the deployment transaction. Then run:
+the deployment transaction. Then follow the secret-safe wallet setup in
+`docs/deployment/lez-wallet.md` and run:
 
 ```bash
-RISC0_DEV_MODE=0 scripts/deploy-lez-testnet.sh
+RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+BONDED_LEZ_SOURCE=/absolute/path/to/logos-execution-zone \
+BONDED_LEZ_WALLET_HOME=/absolute/private/path/to/wallet \
+scripts/deploy-lez-testnet.sh
 ```
 
-The deployment client:
+The official wallet adapter:
 
 - requires HTTPS and rejects endpoint credentials;
 - requires `RISC0_DEV_MODE=0`;
-- verifies the live built-in program IDs against v0.2.4;
-- validates the RISC Zero program image and computes its ID with `r0vm`;
-- Borsh-encodes `LeeTransaction::ProgramDeployment` exactly as the pinned source;
-- computes and checks the expected transaction hash;
-- checks for a prior identical transaction before sending;
+- verifies an unmodified official v0.2.4 checkout and release binary;
+- validates the RISC Zero program image and records its digest and size;
+- submits through the official `wallet deploy-program` command;
+- checks the returned hash against an independent serialization oracle;
 - waits for block inclusion and writes no evidence until inclusion succeeds.
 
-Direct submission now writes only a `sequencer-included` candidate under
-`evidence/testnet/candidates/`; it can never create successful public evidence.
+Direct submission writes only an `official-wallet-sequencer-included` candidate
+under `evidence/testnet/candidates/`; it can never create successful public evidence.
 After the official explorer indexes and finalizes the exact transaction, run the
 read-only canonical verifier with the current full verifier commit:
 
@@ -71,10 +80,10 @@ A network error, missing hydration resource, not-found page, pending block,
 transaction mismatch, block mismatch, bytecode mismatch, or fewer than three
 matching finalized overlap blocks exits nonzero and cannot create passing data.
 
-Override `LEZ_SEQUENCER_URL`, `BONDED_LEZ_ELF`, or `BONDED_LEZ_EVIDENCE` only
-for an explicitly reviewed environment. Plain HTTP requires the Python client's
-`--allow-http` switch and is intended only for a loopback standalone sequencer;
-the public deploy wrapper never enables it.
+The release wrapper does not accept a sequencer override. `BONDED_LEZ_ELF` and
+`BONDED_LEZ_EVIDENCE` may be changed only for an explicitly reviewed run. The
+lower-level raw RPC tool is retained solely for conformance tests and historical
+diagnostics; no release script invokes it.
 
 ## Agent Profiles
 

@@ -112,13 +112,18 @@ if the endpoint's built-in program IDs drift from that release.
 ```bash
 python3 tools/lez_testnet.py preflight
 RISC0_DEV_MODE=0 scripts/build-lez-program.sh
-RISC0_DEV_MODE=0 scripts/deploy-lez-testnet.sh
+RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+BONDED_LEZ_SOURCE=/absolute/path/to/logos-execution-zone \
+BONDED_LEZ_WALLET_HOME=/absolute/private/path/to/wallet \
+scripts/deploy-lez-testnet.sh
 ```
 
-The final command publishes the settlement ELF to the public testnet and writes
-sanitized inclusion evidence under `evidence/testnet/`. Program publication is
-an unsigned LEZ transaction and does not read a wallet seed. The build requires
-Docker, `cargo-risczero`, `r0vm`, Rust, and network access on its first run.
+The final command uses the pinned official wallet to publish the settlement ELF
+and writes sanitized candidate evidence under `evidence/testnet/candidates/`.
+The official CLI currently initializes wallet storage before executing even an
+unsigned deployment, so use the external wallet directory and secret-safe setup
+in `docs/deployment/lez-wallet.md`. The build requires Docker, `cargo-risczero`,
+`r0vm`, Rust, and network access on its first run.
 
 Publishing the guest is not equivalent to deploying the Inbox, Vault, and
 Settlement agent profiles. Those profiles require official Core integrations,
