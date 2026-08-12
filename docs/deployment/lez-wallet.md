@@ -144,6 +144,23 @@ The read-only command distinguishes `verification-unavailable`,
 `not-sequencer-included`, `sequencer-included`, `pending-indexer`, `disputed`,
 and `finalized`. A timeout or unavailable service never authorizes a retry.
 
+Once the provisioning journal itself is `finalized`, promote that exact hash
+through the public explorer contract without opening the wallet:
+
+```bash
+python3 tools/lez_wallet_evidence.py \
+  --candidate "$BONDED_PROVISION_EVIDENCE" \
+  --operation register:sender \
+  --verifier-commit "$(git rev-parse HEAD)" \
+  --observer primary \
+  --evidence evidence/testnet/wallet/register-sender.json
+```
+
+The promotion command refuses submitted or non-final journal entries, binds the
+operation's exact official program and public accounts, and creates evidence
+immutably. Run it later with a distinct observer and output path for the required
+second observation.
+
 ## Program Deployment
 
 Inspect the exact guest before authorization:
