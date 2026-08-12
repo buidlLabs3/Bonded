@@ -6,6 +6,7 @@ import importlib.util
 import json
 import struct
 import unittest
+import urllib.error
 from argparse import Namespace
 from pathlib import Path
 from unittest import mock
@@ -27,6 +28,40 @@ def page(*resources):
 
 
 class ExplorerVerifierTests(unittest.TestCase):
+    def test_rpc_retries_transport_only_and_rejects_malformed_json(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"result":"ok"}'
+        with mock.patch.object(
+            lez.urllib.request,
+            "urlopen",
+            side_effect=[urllib.error.URLError("temporary"), response],
+        ) as request:
+            with mock.patch.object(lez.time, "sleep") as sleep:
+                self.assertEqual(lez.rpc_call("checkHealth", [], 1), "ok")
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once_with(lez.TRANSPORT_RETRY_SECONDS)
+
+        malformed = mock.MagicMock()
+        malformed.__enter__.return_value.read.return_value = b"not-json"
+        with mock.patch.object(lez.urllib.request, "urlopen", return_value=malformed) as request:
+            with self.assertRaisesRegex(lez.ExplorerValidationError, "malformed JSON"):
+                lez.rpc_call("checkHealth", [], 1)
+        self.assertEqual(request.call_count, 1)
+
+    def test_explorer_page_retries_transport_only(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.geturl.return_value = lez.EXPLORER_URL + "/"
+        response.__enter__.return_value.read.return_value = b"explorer"
+        with mock.patch.object(
+            lez.urllib.request,
+            "urlopen",
+            side_effect=[urllib.error.URLError("temporary"), response],
+        ) as request:
+            with mock.patch.object(lez.time, "sleep") as sleep:
+                self.assertEqual(lez.fetch_explorer_page("/", 1), "explorer")
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once_with(lez.TRANSPORT_RETRY_SECONDS)
+
     def test_hydration_parser_selects_typed_success_resources(self):
         block = {
             "header": {"block_id": 4035, "hash": "60" * 32},

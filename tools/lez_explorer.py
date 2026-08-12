@@ -9,6 +9,7 @@ import json
 import re
 import struct
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -32,6 +33,8 @@ TRANSACTION_TITLES = {
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 BASE58_VALUES = {character: index for index, character in enumerate(BASE58_ALPHABET)}
+TRANSPORT_ATTEMPTS = 3
+TRANSPORT_RETRY_SECONDS = 0.5
 
 
 class ExplorerValidationError(RuntimeError):
@@ -95,11 +98,23 @@ def rpc_call(method: str, params: list, timeout: float = 30.0):
         headers={"content-type": "application/json", "user-agent": "bonded-lez-verifier/1"},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
-        raise ExplorerValidationError(f"sequencer RPC failed for {method}: {exc}") from exc
+    for attempt in range(TRANSPORT_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            break
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ExplorerValidationError(
+                f"sequencer RPC returned malformed JSON for {method}: {exc}"
+            ) from exc
+        except (OSError, urllib.error.URLError) as exc:
+            if attempt + 1 == TRANSPORT_ATTEMPTS:
+                raise ExplorerValidationError(
+                    f"sequencer RPC failed for {method} after {TRANSPORT_ATTEMPTS} attempts: {exc}"
+                ) from exc
+            time.sleep(TRANSPORT_RETRY_SECONDS * (attempt + 1))
+    if not isinstance(payload, dict):
+        raise ExplorerValidationError(f"sequencer RPC returned invalid JSON for {method}")
     if payload.get("error") is not None:
         raise ExplorerValidationError(f"sequencer RPC failed for {method}: {payload['error']}")
     if "result" not in payload:
@@ -114,14 +129,24 @@ def fetch_explorer_page(path: str, timeout: float = 30.0) -> str:
         EXPLORER_URL + path,
         headers={"user-agent": "bonded-lez-verifier/1"},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            final = urlsplit(response.geturl())
-            if final.scheme != "https" or final.hostname != urlsplit(EXPLORER_URL).hostname:
-                raise ExplorerValidationError("explorer redirected outside the official host")
-            return response.read().decode("utf-8")
-    except (OSError, urllib.error.URLError, UnicodeDecodeError) as exc:
-        raise ExplorerValidationError(f"explorer request failed for {path}: {exc}") from exc
+    for attempt in range(TRANSPORT_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                final = urlsplit(response.geturl())
+                if final.scheme != "https" or final.hostname != urlsplit(EXPLORER_URL).hostname:
+                    raise ExplorerValidationError("explorer redirected outside the official host")
+                return response.read().decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ExplorerValidationError(
+                f"explorer returned invalid UTF-8 for {path}: {exc}"
+            ) from exc
+        except (OSError, urllib.error.URLError) as exc:
+            if attempt + 1 == TRANSPORT_ATTEMPTS:
+                raise ExplorerValidationError(
+                    f"explorer request failed for {path} after {TRANSPORT_ATTEMPTS} attempts: {exc}"
+                ) from exc
+            time.sleep(TRANSPORT_RETRY_SECONDS * (attempt + 1))
+    raise AssertionError("unreachable explorer transport retry state")
 
 
 def hydration_resources(document: str) -> list:
