@@ -6,6 +6,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -74,6 +75,43 @@ class BondWalletAdapterTests(unittest.TestCase):
             bond.hashlib.sha256(bond.STATE_SEED_DOMAIN + bytes([7]) * 32).hexdigest(),
             "da2a0a77e7198ba0740ecc165c2ca59a4ee26f1b7ce1110babd09df2ab6baa13",
         )
+
+    def test_finality_poll_retries_transient_rpc_errors(self):
+        transaction = "ab" * 32
+        raw = bytes([0]) + b"public-transaction"
+        transaction = bond.hashlib.sha256(raw[1:]).hexdigest()
+        responses = [
+            bond.lez_explorer.ExplorerValidationError("temporary network error"),
+            [bond.base64.b64encode(raw).decode("ascii"), 9],
+            bond.base64.b64encode(bytes(148) + bytes([2])).decode("ascii"),
+        ]
+
+        def rpc(_method, _params):
+            response = responses.pop(0)
+            if isinstance(response, Exception):
+                raise response
+            return response
+
+        with mock.patch.object(bond.lez_explorer, "rpc_call", side_effect=rpc):
+            with mock.patch.object(bond.time, "sleep"):
+                result = bond.wait_for_finalized(transaction, 1, "Public")
+        self.assertEqual(result["finality"], "Finalized")
+        self.assertEqual(result["transaction_type"], "Public")
+
+    def test_finality_poll_reports_bounded_transient_failure(self):
+        clock = iter([0.0, 0.1, 2.0])
+        with mock.patch.object(
+            bond.lez_explorer,
+            "rpc_call",
+            side_effect=bond.lez_explorer.ExplorerValidationError("network unavailable"),
+        ):
+            with mock.patch.object(bond.time, "monotonic", side_effect=lambda: next(clock)):
+                with mock.patch.object(bond.time, "sleep"):
+                    with self.assertRaisesRegex(
+                        bond.BondAdapterError,
+                        "last RPC error network unavailable",
+                    ):
+                        bond.wait_for_finalized("ab" * 32, 1, "Public")
 
     def test_native_output_is_scanned_before_temporary_cleanup(self):
         with bond.captured_native_output() as captured:

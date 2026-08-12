@@ -432,35 +432,42 @@ def wait_for_finalized(transaction: str, timeout: float, expected_kind: str = "P
         raise BondAdapterError(f"unsupported transaction kind: {expected_kind}")
     deadline = time.monotonic() + timeout
     last_status = "not-indexed"
+    last_rpc_error = None
     while time.monotonic() < deadline:
-        result = lez_explorer.rpc_call("getTransaction", [transaction])
-        if isinstance(result, list) and len(result) == 2 and isinstance(result[1], int):
-            raw = base64.b64decode(result[0], validate=True)
-            kind = lez_explorer.TRANSACTION_VARIANTS.get(raw[0]) if raw else None
-            if kind != expected_kind:
-                raise BondAdapterError(
-                    f"sequencer returned {kind or 'unknown'} instead of {expected_kind}"
+        try:
+            result = lez_explorer.rpc_call("getTransaction", [transaction])
+            if isinstance(result, list) and len(result) == 2 and isinstance(result[1], int):
+                raw = base64.b64decode(result[0], validate=True)
+                kind = lez_explorer.TRANSACTION_VARIANTS.get(raw[0]) if raw else None
+                if kind != expected_kind:
+                    raise BondAdapterError(
+                        f"sequencer returned {kind or 'unknown'} instead of {expected_kind}"
+                    )
+                computed = hashlib.sha256(raw[1:]).hexdigest()
+                if computed != transaction:
+                    raise BondAdapterError("sequencer transaction bytes do not match wallet hash")
+                block = lez_explorer.decode_sequencer_block(
+                    lez_explorer.rpc_call("getBlock", [result[1]])
                 )
-            computed = hashlib.sha256(raw[1:]).hexdigest()
-            if computed != transaction:
-                raise BondAdapterError("sequencer transaction bytes do not match wallet hash")
-            block = lez_explorer.decode_sequencer_block(
-                lez_explorer.rpc_call("getBlock", [result[1]])
-            )
-            last_status = block["bedrock_status"]
-            if last_status == "Finalized":
-                return {
-                    "transaction": transaction,
-                    "transaction_type": kind,
-                    "serialized_transaction_sha256": computed,
-                    "serialized_transaction_bytes": len(raw) - 1,
-                    "block": result[1],
-                    "block_hash": block["hash"],
-                    "finality": last_status,
-                }
+                last_status = block["bedrock_status"]
+                last_rpc_error = None
+                if last_status == "Finalized":
+                    return {
+                        "transaction": transaction,
+                        "transaction_type": kind,
+                        "serialized_transaction_sha256": computed,
+                        "serialized_transaction_bytes": len(raw) - 1,
+                        "block": result[1],
+                        "block_hash": block["hash"],
+                        "finality": last_status,
+                    }
+        except lez_explorer.ExplorerValidationError as exc:
+            last_rpc_error = str(exc).split(":", 1)[0]
         time.sleep(12)
+    suffix = f"; last RPC error {last_rpc_error}" if last_rpc_error else ""
     raise BondAdapterError(
-        f"transaction did not reach sequencer finality within {timeout:g} seconds; last state {last_status}"
+        f"transaction did not reach sequencer finality within {timeout:g} seconds; "
+        f"last state {last_status}{suffix}"
     )
 
 
