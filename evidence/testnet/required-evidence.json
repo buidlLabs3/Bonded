@@ -22,7 +22,7 @@
       "kind": "wallet-registration",
       "observations": [
         "evidence/testnet/wallet/register-sender.json",
-        "evidence/testnet/audits/register-sender-independent.json"
+        "evidence/testnet/audits/register-sender-independent-confirmed.json"
       ],
       "operation": "register-sender",
       "screenshots": {

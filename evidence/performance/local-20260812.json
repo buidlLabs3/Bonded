@@ -1,0 +1,140 @@
+{
+  "checks": {
+    "a2a_tasks_per_second": true,
+    "attachment_mib_per_second": true,
+    "cli_deploy_p95_ms": true,
+    "cli_status_p95_ms": true,
+    "peak_rss_kib": true,
+    "queue_operations_per_second": true,
+    "recovery_reopen_ms": true,
+    "settlement_operations_per_second": true,
+    "spam_attempts_per_second": true
+  },
+  "cu_measured": false,
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.12.3",
+    "system": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39"
+  },
+  "limits": {
+    "a2a_tasks_per_second": {
+      "comparison": "minimum",
+      "threshold": 50.0,
+      "unit": "tasks/second"
+    },
+    "attachment_mib_per_second": {
+      "comparison": "minimum",
+      "threshold": 5.0,
+      "unit": "MiB/second"
+    },
+    "cli_deploy_p95_ms": {
+      "comparison": "maximum",
+      "threshold": 1500.0,
+      "unit": "ms"
+    },
+    "cli_status_p95_ms": {
+      "comparison": "maximum",
+      "threshold": 1500.0,
+      "unit": "ms"
+    },
+    "peak_rss_kib": {
+      "comparison": "maximum",
+      "threshold": 262144.0,
+      "unit": "KiB"
+    },
+    "queue_operations_per_second": {
+      "comparison": "minimum",
+      "threshold": 20000.0,
+      "unit": "operations/second"
+    },
+    "recovery_reopen_ms": {
+      "comparison": "maximum",
+      "threshold": 500.0,
+      "unit": "ms"
+    },
+    "settlement_operations_per_second": {
+      "comparison": "minimum",
+      "threshold": 5000.0,
+      "unit": "operations/second"
+    },
+    "spam_attempts_per_second": {
+      "comparison": "minimum",
+      "threshold": 20000.0,
+      "unit": "attempts/second"
+    }
+  },
+  "measurements": {
+    "cli_deploy": {
+      "maximum_ms": 503.25371499639004,
+      "mean_ms": 503.25371499639004,
+      "minimum_ms": 503.25371499639004,
+      "p95_ms": 503.25371499639004,
+      "samples": 1
+    },
+    "cli_status": {
+      "maximum_ms": 1074.1167480009608,
+      "mean_ms": 685.5634432809893,
+      "minimum_ms": 118.35493898252025,
+      "p95_ms": 1038.6212670127861,
+      "samples": 25
+    },
+    "native": {
+      "a2a_concurrency": {
+        "active_after_completion": 0,
+        "tasks": 600,
+        "tasks_per_second": 623.0553786127317,
+        "threads": 4
+      },
+      "attachment_round_trip": {
+        "attachment_bytes": 1048576,
+        "mib_per_second": 262.4008022467194,
+        "repetitions": 24,
+        "streaming_supported": false
+      },
+      "peak_rss_kib": 19704,
+      "queue": {
+        "capacity": 4096,
+        "items": 100000,
+        "operations_per_second": 428203.43512717425,
+        "overflow_rejected": true
+      },
+      "reconnect_recovery": {
+        "durable_records": 1000,
+        "reopen_and_verify_ms": 13.752089
+      },
+      "schema_version": 1,
+      "settlement": {
+        "bonds": 30000,
+        "lock_and_settle_operations_per_second": 151777.9485172892
+      },
+      "spam_burst": {
+        "allowed": 100,
+        "attempts": 100000,
+        "attempts_per_second": 6993651.5827123085,
+        "rejected": 99900
+      }
+    }
+  },
+  "metric_values": {
+    "a2a_tasks_per_second": 623.0553786127317,
+    "attachment_mib_per_second": 262.4008022467194,
+    "cli_deploy_p95_ms": 503.25371499639004,
+    "cli_status_p95_ms": 1038.6212670127861,
+    "peak_rss_kib": 19704.0,
+    "queue_operations_per_second": 428203.43512717425,
+    "recovery_reopen_ms": 13.752089,
+    "settlement_operations_per_second": 151777.9485172892,
+    "spam_attempts_per_second": 6993651.5827123085
+  },
+  "observed_at_utc": "2026-08-12T15:21:26+00:00",
+  "schema_version": 1,
+  "scope": "local-adapters-only-not-lez-or-cu-evidence",
+  "source_commit": "4719173835f5f33e9a0d649c7f3d6fc344d96885",
+  "status": "pass",
+  "unsupported_claims": {
+    "attachment_streaming": "adapter accepts a complete in-memory object",
+    "lez_compute_units": "requires finalized official testnet receipts",
+    "logos_multi_process": "official Messaging/Storage/Core adapters are not bound",
+    "real_proof_latency": "standalone real-proof qualification is separate"
+  }
+}
