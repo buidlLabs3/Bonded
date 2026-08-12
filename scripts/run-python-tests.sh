@@ -10,4 +10,5 @@ python3 -m unittest -v \
     tests/test_lez_explorer.py \
     tests/test_lez_wallet.py \
     tests/test_lez_standalone.py \
-    tests/test_lez_bond.py
+    tests/test_lez_bond.py \
+    tests/test_lez_wallet_bootstrap.py

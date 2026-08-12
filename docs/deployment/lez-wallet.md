@@ -67,17 +67,19 @@ gate independently promotes it.
 ## Secret-Safe Wallet Setup
 
 Create a dedicated testnet-only wallet directory outside the repository. Set
-its directory mode to `0700`. Run the official wallet in a private terminal for
-the first initialization because upstream prints the recovery phrase once. Do
-not redirect that output into this repository, shell history, CI logs, evidence,
-issue trackers, or chat. Store the phrase in an approved secret manager, then
-restrict `storage.json` to mode `0600`.
+its directory mode to `0700`. The pinned v0.2.4 wallet does not encrypt its
+storage at rest, so directory and file permissions are a hard security boundary.
+The bootstrap wrapper calls the official FFI, writes the recovery phrase without
+printing it, and creates distinct sender, owner, and sink public identities.
+Use a new absolute path and immediately transfer the recovery phrase from the
+generated `0600` file into an approved secret manager.
 
 ```bash
 export LEE_WALLET_HOME_DIR=/absolute/private/path/bonded-lez-testnet-wallet
-install -d -m 0700 "$LEE_WALLET_HOME_DIR"
-"$BONDED_LEZ_SOURCE/target/release/wallet" check-health
-chmod 0600 "$LEE_WALLET_HOME_DIR/storage.json"
+BONDED_LEZ_BOOTSTRAP=YES python3 tools/lez_wallet_bootstrap.py \
+  --create \
+  --wallet-source "$BONDED_LEZ_SOURCE" \
+  --wallet-home "$LEE_WALLET_HOME_DIR"
 python3 tools/lez_wallet.py check-wallet \
   --wallet-source "$BONDED_LEZ_SOURCE" \
   --wallet-home "$LEE_WALLET_HOME_DIR"
