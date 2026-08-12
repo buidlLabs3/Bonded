@@ -72,6 +72,7 @@ TESTS = (
         "id": "duplicate-transaction-rejected",
         "package": "sequencer_core",
         "target": None,
+        "cargo_args": ("--features", "mock", "--lib"),
         "filter": "tests::replay_transactions_are_rejected_in_different_blocks",
         "proof_mode": "negative-validation",
         "expected_transactions_min": 0,
@@ -95,6 +96,7 @@ def _command(test: dict) -> list[str]:
     ]
     if test["target"]:
         command.extend(["--test", test["target"]])
+    command.extend(test.get("cargo_args", ()))
     command.extend([test["filter"], "--", "--exact", "--nocapture", "--test-threads=1"])
     return command
 

@@ -24,6 +24,9 @@ class StandaloneQualificationTests(unittest.TestCase):
             self.assertEqual(command[:4], ["cargo", "test", "--locked", "--release"])
             self.assertIn("--exact", command)
             self.assertIn("--test-threads=1", command)
+        replay = standalone._command(standalone.TEST_BY_ID["duplicate-transaction-rejected"])
+        self.assertIn("--lib", replay)
+        self.assertEqual(replay[replay.index("--features") + 1], "mock")
 
     def test_log_scan_extracts_public_hashes_without_retaining_log(self):
         with tempfile.TemporaryDirectory() as directory:
