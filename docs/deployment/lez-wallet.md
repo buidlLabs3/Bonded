@@ -130,6 +130,20 @@ separate promotion step. A process interruption during the submit call leaves an
 explicit `submitting` entry and blocks automatic retry until wallet/sequencer
 state is reconciled, preventing an ambiguous second funding claim.
 
+After a polling timeout, inspect the exact journaled hash without loading the
+wallet or resubmitting anything:
+
+```bash
+python3 tools/lez_candidate_status.py \
+  --candidate "$BONDED_PROVISION_EVIDENCE" \
+  --operation register:sender \
+  --wait 1800
+```
+
+The read-only command distinguishes `verification-unavailable`,
+`not-sequencer-included`, `sequencer-included`, `pending-indexer`, `disputed`,
+and `finalized`. A timeout or unavailable service never authorizes a retry.
+
 ## Program Deployment
 
 Inspect the exact guest before authorization:
