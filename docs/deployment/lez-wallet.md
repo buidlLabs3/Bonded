@@ -131,3 +131,15 @@ construction compatibility but are not public-testnet evidence. Public evidence
 must contain official explorer transaction and finalized block URLs. Failed
 wallet/sequencer submissions and locally computed hashes never count as
 successful transactions.
+
+Fresh-browser supporting evidence is captured with
+`tools/lez_explorer_capture.mjs`. It accepts only exact official transaction and
+block URLs, uses a new temporary Chrome profile, asserts rendered identifiers,
+rejects not-found pages, captures the full content dimensions, and records the
+PNG and rendered-text SHA-256 values. It refuses to overwrite an evidence
+directory and writes nothing unless browser shutdown and temporary-profile
+cleanup also complete. Run its protocol validation with:
+
+```bash
+scripts/run-browser-evidence-tests.sh
+```

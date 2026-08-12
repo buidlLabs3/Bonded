@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { parseArguments, sha256, validatePage } from "../tools/lez_explorer_capture.mjs";
+
+const tx = "d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad";
+
+test("rendered explorer pages require exact official URLs and text", () => {
+  const url = `https://explorer.testnet.lez.logos.co/transaction/${tx}`;
+  validatePage(url, `${tx}\nProgram Deployment Transaction\n370032 bytes`, [tx, "370032 bytes"]);
+  assert.throws(() => validatePage("https://example.com/transaction/x", "x", ["x"]), /exact official/);
+  assert.throws(() => validatePage(url, "Transaction not found", [tx]), /not-found/);
+  assert.throws(() => validatePage(url, "loading", [tx]), /omitted/);
+});
+
+test("arguments and hashes are deterministic and fail closed", () => {
+  const url = `https://explorer.testnet.lez.logos.co/transaction/${tx}`;
+  const parsed = parseArguments([
+    "--url", url,
+    "--output-dir", "/tmp/capture",
+    "--name", "deployment-transaction",
+    "--expected", tx,
+  ]);
+  assert.equal(parsed.url, url);
+  assert.deepEqual(parsed.expected, [tx]);
+  assert.equal(parsed.timeout, 60_000);
+  assert.equal(sha256(Buffer.from("abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  assert.throws(() => parseArguments(["--url", url]), /required/);
+  assert.throws(() => parseArguments([
+    "--url", url,
+    "--output-dir", "/tmp/capture",
+    "--name", "../escape",
+    "--expected", tx,
+  ]), /name/);
+});
