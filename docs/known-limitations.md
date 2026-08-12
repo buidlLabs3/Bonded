@@ -16,9 +16,14 @@
   malformed-program rejection, insufficient-funds rejection, and duplicate
   replay rejection. The real privacy-preserving transfer proof is still pending,
   so the artifact remains `qualification-in-progress`.
-- The submitted sender-registration transaction is sequencer-included in block
-  4415, but that block was still `Pending` at the latest successful read-only
-  check. No dependent registration, funding, or bond transaction is qualified.
+- The sender-registration transaction
+  `2e64e58926ec14b4b59c477c7bd0f63a824e4f7122f8410ee9fd0a1ea14ba259`
+  is finalized in block 4415 and passes the paired public-explorer evidence
+  gate. Owner registration
+  `9f8e1461b7f3a3dc805a392811d8849e67d65d099bde25c88639ff85f22c7c16`
+  is sequencer-included in block 4568 but remained `Pending` at
+  2026-08-12T16:45:04Z. Sink registration, sender funding, and bond transactions
+  remain blocked until their dependencies finalize and are validated separately.
 - The real LEZ guest and program-deployment path do not yet provide a wallet/Core
   invocation adapter or an end-to-end bond execution proof.
 - Three independent testnet identities, agent-profile deployments, bond
