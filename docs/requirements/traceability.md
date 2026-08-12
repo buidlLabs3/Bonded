@@ -38,7 +38,7 @@ does not imply an official upstream integration, LEZ proof, or testnet result.
 | BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20A-20F | Canonical deployment has two separated finalized observations and paired transaction/block captures; private-transfer real-proof and lifecycle calls remain pending | implemented |
 | LEZ-01 | Release transactions use the pinned official wallet path | 20B | Wallet adapter tests plus standalone qualification; 4/5 cases currently pass | implemented |
 | LEZ-02 | Settlement deployment passes the complete public explorer evidence gate | 20C, 20F | `settlement-program-deployment` row passes the offline gate with exact binary/program/transaction/block bindings and paired browser captures | implemented |
-| LEZ-03 | Registration/funding transactions pass the public explorer evidence gate | 20B, 20E, 20F | `register-*` and `fund-sender` inventory rows; `register-sender` passes, owner is submitted, sink/funding remain pending | planned |
+| LEZ-03 | Registration/funding transactions pass the public explorer evidence gate | 20B, 20E, 20F | `register-*` and `fund-sender` inventory rows; sender and owner registration pass, sink registration and funding remain pending | planned |
 | LEZ-04 | Acceptance, rejection, expiry, and delivery-failure transactions pass the public explorer gate | 20D, 20F | Eight lifecycle inventory rows | planned |
 | LEZ-05 | Spending-control and paid-task transactions pass the public explorer gate | 20E, 20F | Three value-moving inventory rows | planned |
 | INBOX-01 | Signed immutable policy and sender preflight | 05, 11 | signature/version/hash tests | verified-local |

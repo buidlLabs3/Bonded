@@ -37,7 +37,7 @@
       "kind": "wallet-registration",
       "observations": [
         "evidence/testnet/wallet/register-owner.json",
-        "evidence/testnet/audits/register-owner-independent.json"
+        "evidence/testnet/audits/register-owner-independent-confirmed.json"
       ],
       "operation": "register-owner",
       "screenshots": {
