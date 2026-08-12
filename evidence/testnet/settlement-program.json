@@ -1,0 +1,20 @@
+{
+  "binary_sha256": "8bca02c366c3261474e51818d8b2a95a441121c85bc57acf7bcc62dc8566182a",
+  "binary_size": 370032,
+  "block": 4035,
+  "component": "settlement-program",
+  "endpoint": "https://testnet.lez.logos.co",
+  "kind": "program-deployment",
+  "last_block_at_preflight": 4034,
+  "lez_release": "v0.2.4",
+  "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401",
+  "network": "lez-testnet",
+  "program_id": "fb83bbb4c6140cb07e9a206d67e96a496bd395eed231e0f6158a672549e9a75c",
+  "release_commit": "3c3054f59358864ca3ce93578e6d874778f1e230",
+  "reproduce": "RISC0_DEV_MODE=0 scripts/deploy-lez-testnet.sh",
+  "risc0_dev_mode": 0,
+  "status": "verified",
+  "submitted": true,
+  "timestamp_utc": "2026-08-12T06:28:20+00:00",
+  "transaction": "d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad"
+}

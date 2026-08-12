@@ -7,6 +7,12 @@ On 2026-08-12 its built-in authenticated-transfer and privacy-circuit program
 IDs matched the public endpoint. The preflight checks those exact IDs on every
 run and refuses deployment if the network ABI has drifted.
 
+The release at commit `3c3054f59358864ca3ce93578e6d874778f1e230` is published
+as program `fb83bbb4c6140cb07e9a206d67e96a496bd395eed231e0f6158a672549e9a75c`.
+Transaction `d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad`
+was independently confirmed in block 4035. Sanitized reproducibility evidence
+is committed at `evidence/testnet/settlement-program.json`.
+
 ## Program Publication
 
 Prerequisites are Rust, Docker, `cargo-risczero`, `r0vm`, Git, and initial
