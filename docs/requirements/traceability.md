@@ -25,7 +25,7 @@ does not imply an official upstream integration, LEZ proof, or testnet result.
 | REL-03 | Skill failures are isolated | 04, 14 | failing external skill followed by healthy dispatch | verified-local |
 | PERF-01 | CU cost for every on-chain operation | 09, 20 | Dated CU report | planned |
 | CI-01 | Standalone LEZ end-to-end CI | 18 | fast CI implemented; real environment remains conditional | implemented |
-| CI-02 | Real proofs with `RISC0_DEV_MODE=0` | 09, 18, 21 | Asserted logs/video | planned |
+| CI-02 | Real proofs with `RISC0_DEV_MODE=0` | 09, 18, 21 | [`evidence/standalone/official-wallet-real-proof.json`](../../evidence/standalone/official-wallet-real-proof.json): 4/5 cases; private-transfer proof pending | implemented |
 | UI-01 | Basecamp owner experience and assets | 16 | QML assets/static tests; live host test pending | implemented |
 | DEPLOY-01 | Three testnet agents: Messaging, Storage, Blockchain | 20 | Deployment evidence bundles | planned |
 | DEMO-01 | Personal file vault | 21 | storage skill local demo/tests | verified-local |
@@ -35,7 +35,12 @@ does not imply an official upstream integration, LEZ proof, or testnet result.
 | BOND-02 | Rejected goes to fixed sink, never owner | 09, 10 | C++ and Rust invariant tests | verified-local |
 | BOND-03 | Expired and failed delivery return full bond | 09, 10 | C++ and Rust lifecycle tests | verified-local |
 | BOND-04 | Classification alone cannot confiscate funds | 12 | triage and inbox adversarial tests | verified-local |
-| BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20A | [`evidence/testnet/settlement-program.json`](../../evidence/testnet/settlement-program.json), finalized block 4035 / `603a76...f142` | verified-testnet |
+| BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20A-20F | One finalized machine observation at [`evidence/testnet/settlement-program.json`](../../evidence/testnet/settlement-program.json); second observation and paired browser gate pending | implemented |
+| LEZ-01 | Release transactions use the pinned official wallet path | 20B | Wallet adapter tests plus standalone qualification; 4/5 cases currently pass | implemented |
+| LEZ-02 | Settlement deployment passes the complete public explorer evidence gate | 20C, 20F | `settlement-program-deployment` row in `evidence/testnet/required-evidence.json` | planned |
+| LEZ-03 | Registration/funding transactions pass the public explorer evidence gate | 20B, 20E, 20F | `register-*` and `fund-sender` inventory rows; sender currently non-final in block 4415 | planned |
+| LEZ-04 | Acceptance, rejection, expiry, and delivery-failure transactions pass the public explorer gate | 20D, 20F | Eight lifecycle inventory rows | planned |
+| LEZ-05 | Spending-control and paid-task transactions pass the public explorer gate | 20E, 20F | Three value-moving inventory rows | planned |
 | INBOX-01 | Signed immutable policy and sender preflight | 05, 11 | signature/version/hash tests | verified-local |
 | INBOX-02 | Trusted bypass, rate limits, one attachment | 07, 11 | intake and service tests | verified-local |
 | PRIV-01 | No content, keys, attachments, or history in logs/on-chain | 05, 19 | telemetry redaction and asset tests | verified-local |

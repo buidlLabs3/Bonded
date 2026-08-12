@@ -7,8 +7,18 @@
   test doubles. Official upstream adapters are not yet bound.
 - The official Logos wallet module currently exposes a work-in-progress Ethereum
   API, not the required shielded LEZ NPK/ISK surface.
-- Program deployment is explorer-validated, but it used the direct sequencer
-  client predating Chunk 20B; it is not evidence of an official wallet call path.
+- The historical program deployment has one finalized sequencer/explorer
+  observation, but it does not yet pass the release gate requiring a second
+  observation and paired fresh-browser transaction/block captures. It also used
+  the direct sequencer client predating Chunk 20B, so it is not evidence of an
+  official wallet call path.
+- Official-wallet standalone qualification currently passes deployment,
+  malformed-program rejection, insufficient-funds rejection, and duplicate
+  replay rejection. The real privacy-preserving transfer proof is still pending,
+  so the artifact remains `qualification-in-progress`.
+- The submitted sender-registration transaction is sequencer-included in block
+  4415, but that block was still `Pending` at the latest successful read-only
+  check. No dependent registration, funding, or bond transaction is qualified.
 - The real LEZ guest and program-deployment path do not yet provide a wallet/Core
   invocation adapter or an end-to-end bond execution proof.
 - Three independent testnet identities, agent-profile deployments, bond
