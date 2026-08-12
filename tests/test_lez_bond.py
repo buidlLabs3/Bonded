@@ -81,7 +81,7 @@ class BondWalletAdapterTests(unittest.TestCase):
         raw = bytes([0]) + b"public-transaction"
         transaction = bond.hashlib.sha256(raw[1:]).hexdigest()
         responses = [
-            bond.lez_explorer.ExplorerValidationError("temporary network error"),
+            bond.lez_explorer.ExplorerTransportError("temporary network error"),
             [bond.base64.b64encode(raw).decode("ascii"), 9],
             bond.base64.b64encode(bytes(148) + bytes([2])).decode("ascii"),
         ]
@@ -103,7 +103,7 @@ class BondWalletAdapterTests(unittest.TestCase):
         with mock.patch.object(
             bond.lez_explorer,
             "rpc_call",
-            side_effect=bond.lez_explorer.ExplorerValidationError("network unavailable"),
+            side_effect=bond.lez_explorer.ExplorerTransportError("network unavailable"),
         ):
             with mock.patch.object(bond.time, "monotonic", side_effect=lambda: next(clock)):
                 with mock.patch.object(bond.time, "sleep"):
@@ -112,6 +112,18 @@ class BondWalletAdapterTests(unittest.TestCase):
                         "last RPC error network unavailable",
                     ):
                         bond.wait_for_finalized("ab" * 32, 1, "Public")
+
+    def test_finality_poll_does_not_retry_semantic_failure(self):
+        with mock.patch.object(
+            bond.lez_explorer,
+            "rpc_call",
+            side_effect=bond.lez_explorer.ExplorerValidationError("malformed response"),
+        ) as rpc:
+            with self.assertRaisesRegex(
+                bond.lez_explorer.ExplorerValidationError, "malformed response"
+            ):
+                bond.wait_for_finalized("ab" * 32, 30, "Public")
+        self.assertEqual(rpc.call_count, 1)
 
     def test_native_output_is_scanned_before_temporary_cleanup(self):
         with bond.captured_native_output() as captured:

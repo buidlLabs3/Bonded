@@ -461,7 +461,7 @@ def wait_for_finalized(transaction: str, timeout: float, expected_kind: str = "P
                         "block_hash": block["hash"],
                         "finality": last_status,
                     }
-        except lez_explorer.ExplorerValidationError as exc:
+        except lez_explorer.ExplorerTransportError as exc:
             last_rpc_error = str(exc).split(":", 1)[0]
         time.sleep(12)
     suffix = f"; last RPC error {last_rpc_error}" if last_rpc_error else ""
