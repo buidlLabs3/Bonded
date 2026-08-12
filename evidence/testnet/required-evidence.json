@@ -1,0 +1,246 @@
+{
+  "network": "lez-testnet",
+  "required_transactions": [
+    {
+      "component": "settlement-program",
+      "id": "settlement-program-deployment",
+      "kind": "program-deployment",
+      "observations": [
+        "evidence/testnet/settlement-program.json",
+        "evidence/testnet/audits/settlement-program-independent.json"
+      ],
+      "operation": "program-deployment",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/deployment-20260812-independent/deployment-block.json",
+        "transaction": "evidence/testnet/screenshots/deployment-20260812-independent/deployment-transaction.json"
+      },
+      "transaction_type": "ProgramDeployment"
+    },
+    {
+      "component": "testnet-wallet",
+      "id": "register-sender",
+      "kind": "wallet-registration",
+      "observations": [
+        "evidence/testnet/wallet/register-sender.json",
+        "evidence/testnet/audits/register-sender-independent.json"
+      ],
+      "operation": "register-sender",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/register-sender/block.json",
+        "transaction": "evidence/testnet/screenshots/register-sender/transaction.json"
+      },
+      "transaction_type": "Public"
+    },
+    {
+      "component": "testnet-wallet",
+      "id": "register-owner",
+      "kind": "wallet-registration",
+      "observations": [
+        "evidence/testnet/wallet/register-owner.json",
+        "evidence/testnet/audits/register-owner-independent.json"
+      ],
+      "operation": "register-owner",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/register-owner/block.json",
+        "transaction": "evidence/testnet/screenshots/register-owner/transaction.json"
+      },
+      "transaction_type": "Public"
+    },
+    {
+      "component": "testnet-wallet",
+      "id": "register-sink",
+      "kind": "wallet-registration",
+      "observations": [
+        "evidence/testnet/wallet/register-sink.json",
+        "evidence/testnet/audits/register-sink-independent.json"
+      ],
+      "operation": "register-sink",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/register-sink/block.json",
+        "transaction": "evidence/testnet/screenshots/register-sink/transaction.json"
+      },
+      "transaction_type": "Public"
+    },
+    {
+      "component": "testnet-wallet",
+      "id": "fund-sender",
+      "kind": "wallet-funding",
+      "observations": [
+        "evidence/testnet/wallet/fund-sender.json",
+        "evidence/testnet/audits/fund-sender-independent.json"
+      ],
+      "operation": "fund-sender",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/fund-sender/block.json",
+        "transaction": "evidence/testnet/screenshots/fund-sender/transaction.json"
+      },
+      "transaction_type": "Public"
+    },
+    {
+      "component": "settlement-program",
+      "id": "acceptance-initialize",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/acceptance-initialize.json",
+        "evidence/testnet/audits/acceptance-initialize-independent.json"
+      ],
+      "operation": "acceptance-initialize",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/acceptance-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/acceptance-initialize/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "settlement-program",
+      "id": "acceptance-settle",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/acceptance-settle.json",
+        "evidence/testnet/audits/acceptance-settle-independent.json"
+      ],
+      "operation": "acceptance-settle",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/acceptance-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/acceptance-settle/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "settlement-program",
+      "id": "rejection-initialize",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/rejection-initialize.json",
+        "evidence/testnet/audits/rejection-initialize-independent.json"
+      ],
+      "operation": "rejection-initialize",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/rejection-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/rejection-initialize/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "settlement-program",
+      "id": "rejection-settle",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/rejection-settle.json",
+        "evidence/testnet/audits/rejection-settle-independent.json"
+      ],
+      "operation": "rejection-settle",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/rejection-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/rejection-settle/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "settlement-program",
+      "id": "expiry-initialize",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/expiry-initialize.json",
+        "evidence/testnet/audits/expiry-initialize-independent.json"
+      ],
+      "operation": "expiry-initialize",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/expiry-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/expiry-initialize/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "settlement-program",
+      "id": "expiry-settle",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/expiry-settle.json",
+        "evidence/testnet/audits/expiry-settle-independent.json"
+      ],
+      "operation": "expiry-settle",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/expiry-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/expiry-settle/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "settlement-program",
+      "id": "delivery-failure-initialize",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/delivery-failure-initialize.json",
+        "evidence/testnet/audits/delivery-failure-initialize-independent.json"
+      ],
+      "operation": "delivery-failure-initialize",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/delivery-failure-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/delivery-failure-initialize/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "settlement-program",
+      "id": "delivery-failure-settle",
+      "kind": "bond-lifecycle",
+      "observations": [
+        "evidence/testnet/lifecycle/delivery-failure-settle.json",
+        "evidence/testnet/audits/delivery-failure-settle-independent.json"
+      ],
+      "operation": "delivery-failure-settle",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/delivery-failure-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/delivery-failure-settle/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "spending-controller",
+      "id": "below-limit-transfer",
+      "kind": "spending-control",
+      "observations": [
+        "evidence/testnet/spending/below-limit-transfer.json",
+        "evidence/testnet/audits/below-limit-transfer-independent.json"
+      ],
+      "operation": "below-limit-transfer",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/below-limit-transfer/block.json",
+        "transaction": "evidence/testnet/screenshots/below-limit-transfer/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "spending-controller",
+      "id": "owner-approved-transfer",
+      "kind": "spending-control",
+      "observations": [
+        "evidence/testnet/spending/owner-approved-transfer.json",
+        "evidence/testnet/audits/owner-approved-transfer-independent.json"
+      ],
+      "operation": "owner-approved-transfer",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/owner-approved-transfer/block.json",
+        "transaction": "evidence/testnet/screenshots/owner-approved-transfer/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    },
+    {
+      "component": "a2a-service",
+      "id": "paid-task-settlement",
+      "kind": "paid-task",
+      "observations": [
+        "evidence/testnet/paid-task/settlement.json",
+        "evidence/testnet/audits/paid-task-settlement-independent.json"
+      ],
+      "operation": "paid-task-settlement",
+      "screenshots": {
+        "block": "evidence/testnet/screenshots/paid-task-settlement/block.json",
+        "transaction": "evidence/testnet/screenshots/paid-task-settlement/transaction.json"
+      },
+      "transaction_type": "PrivacyPreserving"
+    }
+  ],
+  "schema_version": 1
+}

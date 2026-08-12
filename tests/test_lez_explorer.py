@@ -170,6 +170,7 @@ class ExplorerVerifierTests(unittest.TestCase):
             program_id=program_id_hex,
             account_id=[sender],
             verifier_commit="",
+            observer="primary",
             confirmations=3,
             overlap_count=3,
             lag_scan=32,

@@ -21,12 +21,6 @@ if [[ ! -x "$LOGOS_CORE_BIN" || ! -f "$BONDED_LGX" ]]; then
     exit 2
 fi
 
-for profile in inbox vault settlement; do
-    evidence="evidence/testnet/${profile}.json"
-    if [[ ! -f "$evidence" ]] || ! grep -q '"status": "verified"' "$evidence"; then
-        echo "verified testnet evidence is missing for profile: $profile" >&2
-        exit 3
-    fi
-done
+python3 tools/lez_evidence_gate.py --live
 
 exec ./scripts/e2e-real-proof.sh

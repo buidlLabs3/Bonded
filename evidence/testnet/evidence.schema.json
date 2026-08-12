@@ -1,0 +1,75 @@
+{
+  "$id": "https://github.com/buidlLabs3/Bonded/blob/main/evidence/testnet/evidence.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "block": { "minimum": 0, "type": "integer" },
+    "block_hash": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+    "checks": {
+      "additionalProperties": { "const": true },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "component": { "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "type": "string" },
+    "confirmation_depth": { "minimum": 3, "type": "integer" },
+    "explorer_urls": {
+      "additionalProperties": false,
+      "properties": {
+        "block": { "format": "uri", "type": "string" },
+        "transaction": { "format": "uri", "type": "string" }
+      },
+      "required": ["transaction", "block"],
+      "type": "object"
+    },
+    "finality": { "const": "Finalized" },
+    "kind": { "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "type": "string" },
+    "network": { "const": "lez-testnet" },
+    "network_identity": {
+      "additionalProperties": true,
+      "properties": {
+        "channel_id": { "const": "0101010101010101010101010101010101010101010101010101010101010101" },
+        "lez_release": { "const": "v0.2.4" },
+        "lez_release_commit": { "const": "47eba256479f6f785acbd138834340703cd03401" }
+      },
+      "required": ["channel_id", "lez_release", "lez_release_commit"],
+      "type": "object"
+    },
+    "observed_at_utc": { "format": "date-time", "type": "string" },
+    "operation": { "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "type": "string" },
+    "required_confirmation_depth": { "minimum": 3, "type": "integer" },
+    "schema_version": { "const": 1 },
+    "services": {
+      "additionalProperties": true,
+      "properties": {
+        "explorer": { "const": "https://explorer.testnet.lez.logos.co" },
+        "sequencer": { "const": "https://testnet.lez.logos.co" }
+      },
+      "required": ["sequencer", "explorer"],
+      "type": "object"
+    },
+    "status": { "const": "finalized" },
+    "transaction": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+    "transaction_type": {
+      "enum": ["Public", "PrivacyPreserving", "ProgramDeployment"]
+    },
+    "verifier": {
+      "additionalProperties": true,
+      "properties": {
+        "observer": { "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "type": "string" },
+        "result": { "const": "pass" },
+        "source": { "const": "tools/lez_explorer.py" },
+        "source_commit": { "pattern": "^[0-9a-f]{40}$", "type": "string" }
+      },
+      "required": ["source", "source_commit", "observer", "result"],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version", "status", "kind", "component", "operation", "network",
+    "network_identity", "services", "transaction", "transaction_type", "block",
+    "block_hash", "finality", "observed_at_utc", "confirmation_depth",
+    "required_confirmation_depth", "explorer_urls", "checks", "verifier"
+  ],
+  "title": "Bonded LEZ finalized transaction evidence",
+  "type": "object"
+}

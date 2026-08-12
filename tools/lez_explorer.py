@@ -479,6 +479,10 @@ def reconcile(args) -> dict:
         raise ExplorerValidationError("program ID must be 32-byte hex")
     if not HEX_40.fullmatch(args.release_commit):
         raise ExplorerValidationError("release commit must be 40-character hex")
+    if args.verifier_commit and not HEX_40.fullmatch(args.verifier_commit):
+        raise ExplorerValidationError("verifier commit must be 40-character hex")
+    if not SLUG.fullmatch(args.observer):
+        raise ExplorerValidationError("observer must be a lowercase slug")
     context = _collect_reconciliation(args, tx_hash)
     indexed_payload = context["indexed_payload"]
     try:
@@ -529,6 +533,7 @@ def reconcile(args) -> dict:
         "status": status,
         "kind": "program-deployment",
         "component": "settlement-program",
+        "operation": "program-deployment",
         "transaction": tx_hash,
         "transaction_type": context["indexed_kind"],
         "block": args.block_id,
@@ -543,6 +548,7 @@ def reconcile(args) -> dict:
             "command": "python3 tools/lez_explorer.py reconcile --evidence evidence/testnet/settlement-program.json",
             "source": "tools/lez_explorer.py",
             "source_commit": args.verifier_commit or None,
+            "observer": args.observer,
             "result": "pass" if passed else "fail",
         },
         **_network_report(args, context),
@@ -560,6 +566,10 @@ def reconcile_transaction(args) -> dict:
         raise ExplorerValidationError("transaction hash must be 32-byte hex")
     if not SLUG.fullmatch(args.kind) or not SLUG.fullmatch(args.component):
         raise ExplorerValidationError("kind and component must be lowercase slugs")
+    if args.verifier_commit and not HEX_40.fullmatch(args.verifier_commit):
+        raise ExplorerValidationError("verifier commit must be 40-character hex")
+    if not SLUG.fullmatch(args.observer):
+        raise ExplorerValidationError("observer must be a lowercase slug")
     if len(set(args.account_id)) != len(args.account_id):
         raise ExplorerValidationError("expected account IDs must be unique")
     for account_id in args.account_id:
@@ -629,6 +639,7 @@ def reconcile_transaction(args) -> dict:
             "command": "python3 tools/lez_explorer.py transaction [exact identifiers]",
             "source": "tools/lez_explorer.py",
             "source_commit": args.verifier_commit or None,
+            "observer": args.observer,
             "result": "pass" if passed else "fail",
         },
         **_network_report(args, context),
@@ -650,6 +661,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--program-id", default="fb83bbb4c6140cb07e9a206d67e96a496bd395eed231e0f6158a672549e9a75c")
     command.add_argument("--release-commit", default="3c3054f59358864ca3ce93578e6d874778f1e230")
     command.add_argument("--verifier-commit", default="")
+    command.add_argument("--observer", default="primary")
     command.add_argument("--confirmations", type=int, default=3)
     command.add_argument("--overlap-count", type=int, default=3)
     command.add_argument("--lag-scan", type=int, default=32)
@@ -668,6 +680,7 @@ def parser() -> argparse.ArgumentParser:
     transaction.add_argument("--program-id")
     transaction.add_argument("--account-id", action="append", default=[])
     transaction.add_argument("--verifier-commit", default="")
+    transaction.add_argument("--observer", default="primary")
     transaction.add_argument("--confirmations", type=int, default=3)
     transaction.add_argument("--overlap-count", type=int, default=3)
     transaction.add_argument("--lag-scan", type=int, default=32)

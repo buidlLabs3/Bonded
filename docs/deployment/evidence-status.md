@@ -20,3 +20,10 @@ HTTP success alone never advances the state: the official explorer can return
 HTTP 200 while rendering an error. Screenshots support a machine-readable record
 but cannot replace it. A newer failed recheck demotes an existing passing record
 to `disputed` until canonical state is reconciled.
+
+The release inventory is `evidence/testnet/required-evidence.json`. Run
+`scripts/verify-lez-evidence.sh` to repeat exact transaction and block lookups
+without submitting anything. The gate requires two immutable finalized
+observations and both clean-browser screenshots for every row. A network outage
+is a failed qualification attempt (`verification-unavailable` in an archived
+audit), never permission to reuse an earlier passing result.
