@@ -17,6 +17,10 @@ class Crypto {
 public:
     static std::string sha256(const std::string& value);
     static std::pair<std::string, std::string> generateEd25519KeyPair();
+    static std::pair<std::string, std::string> generateX25519KeyPair();
+    static std::string deriveX25519(const std::string& private_key_hex,
+                                    const std::string& peer_public_key_hex);
+    static std::string hkdfSha256(const std::string& key_hex, const std::string& context);
     static std::string signEd25519(const std::string& private_key_hex,
                                    const std::string& message);
     static bool verifyEd25519(const std::string& public_key_hex, const std::string& message,

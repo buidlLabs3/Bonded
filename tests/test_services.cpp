@@ -52,33 +52,101 @@ template <typename Function> void expectDomainError(Function&& function, const s
 void testMessaging()
 {
     MemoryMessagingAdapter adapter;
-    MessagingService messaging(adapter, "lez-devnet");
-    const auto [private_key, public_key] = Crypto::generateEd25519KeyPair();
-    SignedEnvelope envelope{"bonded-inbox/envelope/v1", "lez-devnet", "event-1", "owner",
-                            "inbox", "owner/topic", "accept:message-1", Crypto::randomHex(16),
-                            2000, "", ""};
-    envelope = MessagingService::sign(envelope, private_key, public_key);
+    MessagingService inbox(adapter, "lez-devnet");
+    MessagingService owner(adapter, "lez-devnet");
+    const auto [signing_private_key, signing_public_key] = Crypto::generateEd25519KeyPair();
+    const auto [owner_encryption_private_key, owner_encryption_public_key] =
+        Crypto::generateX25519KeyPair();
+    const auto [wrong_encryption_private_key, wrong_encryption_public_key] =
+        Crypto::generateX25519KeyPair();
+    static_cast<void>(wrong_encryption_public_key);
+    const std::string plaintext = "accept:message-1";
+    SignedEnvelope envelope{"bonded-inbox/envelope/v2", "lez-devnet", "event-1", "owner",
+                            "inbox", "owner/topic", Crypto::randomHex(16), 2000,
+                            "", "", "", "", "", ""};
+    envelope = MessagingService::sealAndSign(envelope, plaintext,
+                                             owner_encryption_public_key,
+                                             signing_private_key, signing_public_key);
     check(MessagingService::verify(envelope, 1000, "lez-devnet"),
           "valid messaging envelope failed verification");
+    const Json wire_envelope = envelope;
+    const auto serialized = wire_envelope.dump();
+    check(!wire_envelope.contains("payload"),
+          "owner-channel payload field remained in the v2 wire schema");
+    check(serialized.find(plaintext) == std::string::npos,
+          "owner-channel plaintext appeared in serialized transport bytes");
 
     std::size_t deliveries = 0;
-    messaging.subscribe("owner/topic", 1000,
-                        [&](const SignedEnvelope& received) {
-                            check(received.payload == envelope.payload, "message payload changed");
-                            ++deliveries;
-                        });
-    messaging.send(envelope, 1000);
-    messaging.send(envelope, 1000);
+    std::uint64_t owner_clock = 1000;
+    owner.subscribe("owner/topic", [&] { return owner_clock; }, "inbox",
+                    owner_encryption_private_key, "owner",
+                    signing_public_key,
+                    [&](const SignedEnvelope& received, const std::string& opened) {
+                        check(received.sender == "owner" && opened == plaintext,
+                              "owner-channel identity or plaintext changed");
+                        ++deliveries;
+                    });
+    inbox.send(envelope, 1000);
+    inbox.send(envelope, 1000);
     check(deliveries == 1, "duplicate messaging envelope was processed twice");
 
     auto tampered = envelope;
-    tampered.payload = "reject:message-1";
+    tampered.ciphertext[0] = tampered.ciphertext[0] == '0' ? '1' : '0';
     check(!MessagingService::verify(tampered, 1000, "lez-devnet"),
           "tampered messaging envelope verified");
     check(!MessagingService::verify(envelope, 2001, "lez-devnet"),
           "expired messaging envelope verified");
-    expectDomainError([&] { messaging.send(envelope, 2001); },
+    auto legacy = envelope;
+    legacy.protocol = "bonded-inbox/envelope/v1";
+    check(!MessagingService::verify(legacy, 1000, "lez-devnet"),
+          "legacy plaintext-era envelope protocol verified");
+    expectDomainError([&] { inbox.send(envelope, 2001); },
                       "expired messaging envelope was sent");
+    owner_clock = 2001;
+    SignedEnvelope later_envelope{"bonded-inbox/envelope/v2", "lez-devnet", "event-2", "owner",
+                                  "inbox", "owner/topic", Crypto::randomHex(16), 2000,
+                                  "", "", "", "", "", ""};
+    later_envelope = MessagingService::sealAndSign(
+        later_envelope, "deny:message-2", owner_encryption_public_key,
+        signing_private_key, signing_public_key);
+    expectDomainError([&] { adapter.send("owner/topic", Json(later_envelope).dump()); },
+                      "long-lived subscription accepted a newly expired envelope");
+    try {
+        adapter.send("owner/topic", "{not-json");
+        throw std::runtime_error("malformed owner-channel JSON was accepted");
+    } catch (const DomainError& error) {
+        check(std::string(error.what()) == "received invalid messaging envelope",
+              "owner channel exposed parser details");
+    }
+    expectDomainError(
+        [&] {
+            MessagingService::open(envelope, 1000, "lez-devnet", "other-recipient",
+                                   owner_encryption_private_key, "owner", signing_public_key);
+        },
+        "wrong owner-channel recipient opened an envelope");
+    expectDomainError(
+        [&] {
+            MessagingService::open(envelope, 1000, "lez-devnet", "inbox",
+                                   owner_encryption_private_key, "other-sender",
+                                   signing_public_key);
+        },
+        "wrong owner-channel sender identity opened an envelope");
+    expectDomainError(
+        [&] {
+            MessagingService::open(envelope, 1000, "lez-devnet", "inbox",
+                                   wrong_encryption_private_key, "owner", signing_public_key);
+        },
+        "wrong owner-channel encryption key opened an envelope");
+    const auto [other_signing_private_key, other_signing_public_key] =
+        Crypto::generateEd25519KeyPair();
+    static_cast<void>(other_signing_private_key);
+    expectDomainError(
+        [&] {
+            MessagingService::open(envelope, 1000, "lez-devnet", "inbox",
+                                   owner_encryption_private_key, "owner",
+                                   other_signing_public_key);
+        },
+        "unpinned owner signing key opened an envelope");
 
     adapter.join("group-1");
     check(!adapter.createGroup({"owner", "inbox"}).empty(), "messaging group was not created");

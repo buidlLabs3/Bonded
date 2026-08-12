@@ -11,7 +11,7 @@ definitions. The conformance suite asserts that the union contains exactly the
 | `storage.download` | no | yes | no | Fetch, authenticate, and decrypt a known object. |
 | `storage.list` | no | yes | no | List local metadata, never plaintext. |
 | `storage.share` | no | yes | no | Issue an expiring recipient grant. |
-| `messaging.send` | yes | no | no | Sign and send a versioned envelope. |
+| `messaging.send` | yes | no | no | Seal to `recipient_encryption_public_key`, sign, and send a versioned envelope. |
 | `messaging.join` | yes | no | no | Join a group by identifier. |
 | `messaging.create_group` | yes | no | no | Create a group for explicit members. |
 | `wallet.balance` | no | no | yes | Return LEZ balance. |

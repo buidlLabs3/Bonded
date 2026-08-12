@@ -1,5 +1,6 @@
 #include "runtime/default_skill_catalog.h"
 #include "runtime/skill_runtime.h"
+#include "security/crypto.h"
 
 #include <iostream>
 #include <set>
@@ -55,16 +56,35 @@ int main()
                               Json{{"members", Json::array({"peer"})}})
                       .contains("group_id"),
               "messaging group skill failed");
+        const auto recipient_encryption_keys = bonded::Crypto::generateX25519KeyPair();
+        const auto sent = registry.invoke(
+            "messaging.send", Profile::Inbox,
+            Json{{"recipient", "peer"},
+                 {"topic", "bonded/private/channel"},
+                 {"payload", "private skill payload"},
+                 {"recipient_encryption_public_key", recipient_encryption_keys.second},
+                 {"now_unix", 100}});
+        check(sent.at("message_id").get<std::string>().starts_with("memory-message-"),
+              "messaging send skill did not seal and dispatch an envelope");
 
         const auto card = registry.invoke("agent.card", Profile::Vault,
                                           Json{{"now_unix", 100}, {"expires_at", 1000}});
         check(card.at("protocol") == "lf.a2a.v1", "A2A card skill returned wrong protocol");
+        check(card.at("capabilities").at("messaging_encryption") ==
+                  "x25519-aes-256-gcm" &&
+                  card.at("capabilities").at("messaging_encryption_public_key")
+                          .get<std::string>()
+                          .size() == 64,
+              "Agent Card omitted the X25519 messaging key");
         check(registry.invoke("agent.discover", Profile::Vault,
                               Json{{"now_unix", 100}, {"skill", "storage.upload"}})
                       .size() == 1,
               "A2A discovery skill did not return the local card");
-        check(registry.invoke("meta.status", Profile::Vault, Json::object()).at("state") == "ready",
+        const auto status = registry.invoke("meta.status", Profile::Vault, Json::object());
+        check(status.at("state") == "ready",
               "meta status skill failed");
+        check(status.at("messaging_encryption_public_key").get<std::string>().size() == 64,
+              "runtime status omitted the X25519 messaging key");
 
         std::cout << "PASS 21-skill runtime conformance\n";
         return 0;

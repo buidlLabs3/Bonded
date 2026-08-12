@@ -109,6 +109,20 @@ void testCrypto()
           "authenticated encryption round trip failed");
     expectDomainError([&] { Crypto::decryptAes256Gcm(key, encrypted, "message:m2"); },
                       "wrong associated data decrypted");
+
+    const auto [alice_private, alice_public] = Crypto::generateX25519KeyPair();
+    const auto [bob_private, bob_public] = Crypto::generateX25519KeyPair();
+    check(Crypto::deriveX25519(alice_private, bob_public) ==
+              Crypto::deriveX25519(bob_private, alice_public),
+          "X25519 peers did not derive the same shared secret");
+    check(Crypto::hkdfSha256(Crypto::deriveX25519(alice_private, bob_public), "context-a") ==
+              Crypto::hkdfSha256(Crypto::deriveX25519(bob_private, alice_public), "context-a"),
+          "HKDF peers did not derive the same context-bound key");
+    check(Crypto::hkdfSha256(Crypto::deriveX25519(alice_private, bob_public), "context-a") !=
+              Crypto::hkdfSha256(Crypto::deriveX25519(alice_private, bob_public), "context-b"),
+          "HKDF did not bind the encryption context");
+    expectDomainError([&] { Crypto::deriveX25519(alice_private, "00"); },
+                      "invalid X25519 public key was accepted");
 }
 
 void testPolicy()

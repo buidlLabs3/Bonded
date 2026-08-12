@@ -51,6 +51,9 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
     const auto keys = Crypto::generateEd25519KeyPair();
     private_key_ = keys.first;
     public_key_ = keys.second;
+    const auto encryption_keys = Crypto::generateX25519KeyPair();
+    encryption_private_key_ = encryption_keys.first;
+    encryption_public_key_ = encryption_keys.second;
     agent_id_ = "npk:" + Crypto::sha256(public_key_).substr(0, 32);
 }
 
@@ -88,7 +91,10 @@ AgentCard SkillRuntime::ownCard(std::uint64_t now_unix, std::uint64_t expires_at
                    agent_id_,
                    public_key_,
                    profileNames(registry_, profile_),
-                   Json{{"streaming", true}, {"paid_tasks", true}},
+                   Json{{"streaming", true},
+                        {"paid_tasks", true},
+                        {"messaging_encryption", "x25519-aes-256-gcm"},
+                        {"messaging_encryption_public_key", encryption_public_key_}},
                    "bonded/a2a/" + agent_id_,
                    task_price,
                    expires_at,
@@ -117,18 +123,24 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
     }
     if (name == "messaging.send") {
         const auto now = input.at("now_unix").get<std::uint64_t>();
-        SignedEnvelope envelope{"bonded-inbox/envelope/v1",
+        SignedEnvelope envelope{"bonded-inbox/envelope/v2",
                                 network_,
                                 input.value("id", Crypto::randomHex(16)),
                                 agent_id_,
                                 input.at("recipient").get<std::string>(),
                                 input.at("topic").get<std::string>(),
-                                input.at("payload").get<std::string>(),
                                 Crypto::randomHex(16),
                                 input.value("expires_at", now + 300),
                                 "",
+                                "",
+                                "",
+                                "",
+                                "",
                                 ""};
-        envelope = MessagingService::sign(std::move(envelope), private_key_, public_key_);
+        envelope = MessagingService::sealAndSign(
+            std::move(envelope), input.at("payload").get<std::string>(),
+            input.at("recipient_encryption_public_key").get<std::string>(), private_key_,
+            public_key_);
         return Json{{"message_id", messaging_.send(envelope, now)}};
     }
     if (name == "messaging.join") {
@@ -246,6 +258,7 @@ Json SkillRuntime::status() const
     return Json{{"state", "ready"},
                 {"profile", toString(profile_)},
                 {"agent_id", agent_id_},
+                {"messaging_encryption_public_key", encryption_public_key_},
                 {"balance", wallet_adapter_.balance()},
                 {"storage_bytes", storage_bytes},
                 {"active_tasks", a2a_.activeTaskCount()},

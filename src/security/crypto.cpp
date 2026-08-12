@@ -6,6 +6,7 @@
 #include <memory>
 
 #include <openssl/evp.h>
+#include <openssl/kdf.h>
 #include <openssl/rand.h>
 
 namespace bonded {
@@ -92,6 +93,88 @@ std::pair<std::string, std::string> Crypto::generateEd25519KeyPair()
     require(EVP_PKEY_get_raw_public_key(key.get(), public_key.data(), &public_size) == 1,
             "cannot export Ed25519 public key");
     return {hexEncode(private_key.data(), private_size), hexEncode(public_key.data(), public_size)};
+}
+
+std::pair<std::string, std::string> Crypto::generateX25519KeyPair()
+{
+    OpenSslPtr<EVP_PKEY_CTX, EVP_PKEY_CTX_free> context(
+        EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr), EVP_PKEY_CTX_free);
+    require(context != nullptr, "cannot allocate X25519 context");
+    require(EVP_PKEY_keygen_init(context.get()) == 1, "cannot initialize X25519 keygen");
+    EVP_PKEY* raw_key = nullptr;
+    require(EVP_PKEY_keygen(context.get(), &raw_key) == 1, "cannot generate X25519 key");
+    OpenSslPtr<EVP_PKEY, EVP_PKEY_free> key(raw_key, EVP_PKEY_free);
+
+    std::array<unsigned char, 32> private_key{};
+    std::array<unsigned char, 32> public_key{};
+    std::size_t private_size = private_key.size();
+    std::size_t public_size = public_key.size();
+    require(EVP_PKEY_get_raw_private_key(key.get(), private_key.data(), &private_size) == 1,
+            "cannot export X25519 private key");
+    require(EVP_PKEY_get_raw_public_key(key.get(), public_key.data(), &public_size) == 1,
+            "cannot export X25519 public key");
+    return {hexEncode(private_key.data(), private_size), hexEncode(public_key.data(), public_size)};
+}
+
+std::string Crypto::deriveX25519(const std::string& private_key_hex,
+                                 const std::string& peer_public_key_hex)
+{
+    const auto private_key = hexDecode(private_key_hex);
+    const auto peer_public_key = hexDecode(peer_public_key_hex);
+    require(private_key.size() == 32, "X25519 private key must be 32 bytes");
+    require(peer_public_key.size() == 32, "X25519 public key must be 32 bytes");
+    OpenSslPtr<EVP_PKEY, EVP_PKEY_free> local(
+        EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, nullptr, private_key.data(),
+                                     private_key.size()),
+        EVP_PKEY_free);
+    OpenSslPtr<EVP_PKEY, EVP_PKEY_free> peer(
+        EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr, peer_public_key.data(),
+                                    peer_public_key.size()),
+        EVP_PKEY_free);
+    require(local != nullptr && peer != nullptr, "cannot import X25519 key material");
+    OpenSslPtr<EVP_PKEY_CTX, EVP_PKEY_CTX_free> context(EVP_PKEY_CTX_new(local.get(), nullptr),
+                                                        EVP_PKEY_CTX_free);
+    require(context != nullptr, "cannot allocate X25519 derivation context");
+    require(EVP_PKEY_derive_init(context.get()) == 1, "cannot initialize X25519 derivation");
+    require(EVP_PKEY_derive_set_peer(context.get(), peer.get()) == 1,
+            "cannot set X25519 peer key");
+    std::array<unsigned char, 32> shared{};
+    std::size_t shared_size = shared.size();
+    require(EVP_PKEY_derive(context.get(), shared.data(), &shared_size) == 1 &&
+                shared_size == shared.size(),
+            "cannot derive X25519 shared secret");
+    return hexEncode(shared.data(), shared_size);
+}
+
+std::string Crypto::hkdfSha256(const std::string& key_hex, const std::string& context)
+{
+    static constexpr unsigned char kSalt[] = "bonded-inbox/envelope/v2/hkdf-salt";
+    const auto key = hexDecode(key_hex);
+    require(!key.empty(), "HKDF key must not be empty");
+    require(!context.empty(), "HKDF context must not be empty");
+    OpenSslPtr<EVP_PKEY_CTX, EVP_PKEY_CTX_free> derivation(
+        EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr), EVP_PKEY_CTX_free);
+    require(derivation != nullptr, "cannot allocate HKDF context");
+    require(EVP_PKEY_derive_init(derivation.get()) == 1, "cannot initialize HKDF");
+    require(EVP_PKEY_CTX_hkdf_mode(derivation.get(), EVP_PKEY_HKDEF_MODE_EXTRACT_AND_EXPAND) ==
+                1,
+            "cannot set HKDF mode");
+    require(EVP_PKEY_CTX_set_hkdf_md(derivation.get(), EVP_sha256()) == 1,
+            "cannot set HKDF digest");
+    require(EVP_PKEY_CTX_set1_hkdf_salt(derivation.get(), kSalt, sizeof(kSalt) - 1) == 1,
+            "cannot set HKDF salt");
+    require(EVP_PKEY_CTX_set1_hkdf_key(derivation.get(), key.data(), key.size()) == 1,
+            "cannot set HKDF key");
+    require(EVP_PKEY_CTX_add1_hkdf_info(
+                derivation.get(), reinterpret_cast<const unsigned char*>(context.data()),
+                context.size()) == 1,
+            "cannot set HKDF context");
+    std::array<unsigned char, 32> output{};
+    std::size_t output_size = output.size();
+    require(EVP_PKEY_derive(derivation.get(), output.data(), &output_size) == 1 &&
+                output_size == output.size(),
+            "cannot derive HKDF output");
+    return hexEncode(output.data(), output_size);
 }
 
 std::string Crypto::signEd25519(const std::string& private_key_hex, const std::string& message)

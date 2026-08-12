@@ -34,6 +34,8 @@ private:
     std::string agent_id_;
     std::string private_key_;
     std::string public_key_;
+    std::string encryption_private_key_;
+    std::string encryption_public_key_;
     std::string storage_key_;
     std::function<void(const Json&)> owner_action_required_;
 

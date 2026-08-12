@@ -12,7 +12,7 @@ does not imply an official upstream integration, LEZ proof, or testnet result.
 | CORE-01 | Load beside wallet, storage, and messaging without upstream changes | 01, 04 | `nix build .#lib`, `nix build .#lgx` | verified-local |
 | CORE-02 | Independent shielded NPK/ISK identity and funds | 04, 08 | LEZ integration/testnet evidence | planned |
 | CORE-03 | Single-command headless deployment | 15 | `tests/test_cli.py` deploy/idempotency/restore | verified-local |
-| CORE-04 | Encrypted owner channel from separate app | 06, 16 | Signed envelope service and QML assets; two-instance test pending | implemented |
+| CORE-04 | Encrypted owner channel from separate app | 06, 16 | Two `MessagingService` instances verify X25519/AES-GCM sealing, pinned Ed25519 identity, no wire plaintext, and replay rejection; official Logos transport remains pending | verified-local |
 | CORE-05 | Per-transaction and period spending approval | 08 | `tests/test_services.cpp` spending cases | verified-local |
 | SK-STO | `upload`, `download`, `list`, `share` | 07 | service and 21-skill runtime suites | verified-local |
 | SK-MSG | `send`, `join`, `create_group` | 06 | service and 21-skill runtime suites | verified-local |
