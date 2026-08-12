@@ -6,10 +6,15 @@
 #include "services/inbox_service.h"
 #include "storage/database.h"
 
+#include <csignal>
+#include <filesystem>
 #include <functional>
 #include <iostream>
+#include <poll.h>
 #include <stdexcept>
 #include <string>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -148,6 +153,101 @@ void testDatabase()
     check(database.hasProcessedEvent("event-1"), "processed-event record missing");
 }
 
+void testProcessInterruptionRecovery()
+{
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("bonded-inbox-recovery-" + std::to_string(::getpid()));
+    struct Cleanup {
+        std::filesystem::path root;
+        ~Cleanup()
+        {
+            std::error_code ignored;
+            std::filesystem::remove_all(root, ignored);
+        }
+    } cleanup{root};
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directory(root);
+    const auto database_path = root / "recovery.db";
+
+    int readiness[2]{};
+    check(::pipe(readiness) == 0, "could not create process readiness pipe");
+    const auto writer = ::fork();
+    if (writer < 0) {
+        ::close(readiness[0]);
+        ::close(readiness[1]);
+        throw std::runtime_error("could not fork recovery writer");
+    }
+    if (writer == 0) {
+        ::close(readiness[0]);
+        try {
+            Database database(database_path);
+            database.migrate();
+            database.enqueue("bonded/recovery/first", "public-event-1");
+            database.enqueue("bonded/recovery/second", "public-event-2");
+            database.recordProcessedEvent("incoming-event-1");
+            const char ready = '1';
+            if (::write(readiness[1], &ready, 1) != 1) {
+                ::_exit(3);
+            }
+            for (;;) {
+                ::pause();
+            }
+        } catch (...) {
+            ::_exit(2);
+        }
+    }
+
+    ::close(readiness[1]);
+    char ready = 0;
+    pollfd readiness_poll{readiness[0], POLLIN, 0};
+    const auto poll_result = ::poll(&readiness_poll, 1, 10000);
+    const auto ready_bytes = poll_result > 0 ? ::read(readiness[0], &ready, 1) : -1;
+    ::close(readiness[0]);
+    if (ready_bytes != 1 || ready != '1') {
+        ::kill(writer, SIGKILL);
+        ::waitpid(writer, nullptr, 0);
+        throw std::runtime_error("recovery writer exited before durable readiness");
+    }
+    check(::kill(writer, SIGKILL) == 0, "could not interrupt recovery writer");
+    int writer_status = 0;
+    check(::waitpid(writer, &writer_status, 0) == writer,
+          "could not reap interrupted recovery writer");
+    check(WIFSIGNALED(writer_status) && WTERMSIG(writer_status) == SIGKILL,
+          "recovery writer did not terminate from SIGKILL");
+
+    std::int64_t acknowledged_id = 0;
+    {
+        Database database(database_path);
+        database.migrate();
+        const auto pending = database.pendingOutbox(10);
+        check(pending.size() == 2, "restart did not recover both pending outbox records");
+        check(pending[0].topic == "bonded/recovery/first" &&
+                  pending[0].payload == "public-event-1" &&
+                  pending[1].topic == "bonded/recovery/second" &&
+                  pending[1].payload == "public-event-2",
+              "restart changed durable outbox ordering or content");
+        check(database.hasProcessedEvent("incoming-event-1"),
+              "restart lost the processed-event replay marker");
+        database.recordProcessedEvent("incoming-event-1");
+        check(database.hasProcessedEvent("incoming-event-1"),
+              "duplicate replay marker was not idempotent");
+        acknowledged_id = pending.front().id;
+        database.acknowledgeOutbox(acknowledged_id);
+    }
+
+    {
+        Database database(database_path);
+        database.migrate();
+        const auto pending = database.pendingOutbox(10);
+        check(pending.size() == 1 && pending.front().topic == "bonded/recovery/second",
+              "outbox acknowledgement was not durable across a second restart");
+        check(pending.front().id != acknowledged_id,
+              "acknowledged outbox record was replayed after restart");
+        check(database.hasProcessedEvent("incoming-event-1"),
+              "processed-event marker disappeared after a second restart");
+    }
+}
+
 void testBondService()
 {
     BondService bonds;
@@ -247,6 +347,7 @@ int main()
     const std::vector<std::pair<std::string, std::function<void()>>> tests{
         {"state machine", testStateMachine}, {"cryptography", testCrypto},
         {"policy", testPolicy},             {"database", testDatabase},
+        {"process recovery", testProcessInterruptionRecovery},
         {"bond service", testBondService},  {"skill registry", testSkillRegistry},
         {"inbox lifecycle", testInboxLifecycle},
     };
