@@ -26,7 +26,6 @@ class BondEvidenceTests(unittest.TestCase):
             "sink": "8qbHbw2BbbTHBW1sbeqakYXVWCLmLqJH4LrkYyRNCCpv",
             "state": "CktRuQ2mttgRGkXJ8ZrUaHA4SKBBGWmuSQ9C9EGPBLNk",
             "escrow": "GgBaCs3N4sQtPAi6M9vZzL4wYFZc7W8Q6e6v8oG8q1jT",
-            "clock": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
         }
         if operation == "settle":
             accounts["destination"] = (
@@ -41,7 +40,7 @@ class BondEvidenceTests(unittest.TestCase):
             "network_identity": network_identity,
             "program_id": evidence.lez_bond.CANONICAL_PROGRAM_ID,
             "binary_sha256": "12" * 32,
-            "binary_size": 370032,
+            "binary_size": 368324,
         }
         candidate = {
             **deployment,
@@ -86,7 +85,7 @@ class BondEvidenceTests(unittest.TestCase):
             "checks": {"all": True},
         }
 
-    def test_initialize_promotion_binds_exact_four_public_actions(self):
+    def test_initialize_promotion_binds_exact_three_public_actions(self):
         with tempfile.TemporaryDirectory() as directory:
             args, candidate = self.fixture(Path(directory))
             with mock.patch.object(
@@ -100,11 +99,11 @@ class BondEvidenceTests(unittest.TestCase):
             self.assertEqual(called.program_id, None)
             self.assertEqual(
                 called.account_id,
-                [candidate["accounts"][name] for name in ("sender", "state", "escrow", "clock")],
+                [candidate["accounts"][name] for name in ("sender", "state", "escrow")],
             )
             self.assertEqual(result["bond_provenance"]["program_id"], candidate["program_id"])
 
-    def test_rejection_settlement_requires_sink_destination_and_five_actions(self):
+    def test_rejection_settlement_requires_sink_destination_and_four_actions(self):
         with tempfile.TemporaryDirectory() as directory:
             args, candidate = self.fixture(Path(directory), "rejection-settle")
             with mock.patch.object(
@@ -117,7 +116,7 @@ class BondEvidenceTests(unittest.TestCase):
                 reconcile.call_args.args[0].account_id,
                 [
                     candidate["accounts"][name]
-                    for name in ("state", "escrow", "destination", "owner", "clock")
+                    for name in ("state", "escrow", "destination", "owner")
                 ],
             )
             candidate["accounts"]["destination"] = candidate["accounts"]["sender"]
@@ -125,6 +124,20 @@ class BondEvidenceTests(unittest.TestCase):
             args.evidence = Path(directory) / "invalid.json"
             with self.assertRaisesRegex(evidence.BondEvidenceError, "destination"):
                 evidence.promote(args)
+
+    def test_expiry_settlement_omits_mutable_owner_and_clock_accounts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args, candidate = self.fixture(Path(directory), "expiry-settle")
+            with mock.patch.object(
+                evidence.lez_explorer,
+                "reconcile_transaction",
+                return_value=self.reconciled(),
+            ) as reconcile:
+                evidence.promote(args)
+            self.assertEqual(
+                reconcile.call_args.args[0].account_id,
+                [candidate["accounts"][name] for name in ("state", "escrow", "destination")],
+            )
 
     def test_nonfinal_or_noncanonical_candidate_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

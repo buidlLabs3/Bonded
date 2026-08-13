@@ -210,7 +210,6 @@ class BondWalletAdapterTests(unittest.TestCase):
                     bytes([3]) * 32: "sink",
                     bytes([4]) * 32: "state",
                     bytes([5]) * 32: "escrow",
-                    bond.CLOCK_ACCOUNT: "clock",
                 }
                 return names[raw]
 

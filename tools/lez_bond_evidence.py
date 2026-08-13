@@ -57,11 +57,12 @@ def _expected_accounts(candidate: dict, operation: str) -> list[str]:
     accounts = candidate.get("accounts")
     if not isinstance(accounts, dict):
         raise BondEvidenceError("lifecycle journal omits its public account map")
-    names = (
-        ("sender", "state", "escrow", "clock")
-        if operation == "initialize"
-        else ("state", "escrow", "destination", "owner", "clock")
-    )
+    if operation == "initialize":
+        names = ("sender", "state", "escrow")
+    elif candidate.get("outcome") == "refund-expired":
+        names = ("state", "escrow", "destination")
+    else:
+        names = ("state", "escrow", "destination", "owner")
     try:
         expected = [accounts[name] for name in names]
     except KeyError as exc:

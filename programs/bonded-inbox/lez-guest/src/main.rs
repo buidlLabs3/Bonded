@@ -2,7 +2,6 @@ use authenticated_transfer_core::Instruction as TransferInstruction;
 use bonded_inbox_program::{
     AUTHENTICATED_TRANSFER_PROGRAM_ID, BondState, Instruction, Outcome, STATE_VERSION,
 };
-use clock_core::{CLOCK_01_PROGRAM_ACCOUNT_ID, ClockAccountData};
 use lee_core::{
     account::{AccountId, AccountWithMetadata},
     program::{
@@ -47,17 +46,12 @@ fn initialize(
     Vec<AccountPostState>,
     Vec<ChainedCall>,
 ) {
-    let [sender, state_account, escrow_account, clock] = <[_; 4]>::try_from(pre_states)
-        .expect("Initialize requires [sender, state PDA, escrow PDA, clock]");
+    let [sender, state_account, escrow_account] = <[_; 3]>::try_from(pre_states)
+        .expect("Initialize requires [sender, state PDA, escrow PDA]");
 
-    assert_eq!(
-        clock.account_id, CLOCK_01_PROGRAM_ACCOUNT_ID,
-        "Invalid clock account"
-    );
-    let now = ClockAccountData::from_bytes(&clock.account.data).timestamp;
     state
         .as_bond()
-        .validate(now)
+        .validate_static()
         .expect("invalid bond parameters");
     assert!(sender.is_authorized, "Sender must authorize initialization");
     assert_eq!(
@@ -115,17 +109,11 @@ fn initialize(
     .with_pda_seeds(vec![escrow_seed(&state.id)]);
 
     (
-        vec![
-            sender.clone(),
-            state_account,
-            escrow_account.clone(),
-            clock.clone(),
-        ],
+        vec![sender.clone(), state_account, escrow_account.clone()],
         vec![
             AccountPostState::new(sender.account),
             state_post,
             AccountPostState::new(escrow_account.account),
-            AccountPostState::new(clock.account),
         ],
         vec![transfer],
     )
@@ -140,15 +128,18 @@ fn settle(
     Vec<AccountPostState>,
     Vec<ChainedCall>,
 ) {
-    let [state_account, escrow_account, destination, authority, clock] =
-        <[_; 5]>::try_from(pre_states)
-            .expect("Settle requires [state PDA, escrow PDA, destination, authority, clock]");
-
-    assert_eq!(
-        clock.account_id, CLOCK_01_PROGRAM_ACCOUNT_ID,
-        "Invalid clock account"
-    );
-    let now = ClockAccountData::from_bytes(&clock.account.data).timestamp;
+    let (state_account, escrow_account, destination, authority) =
+        if outcome == Outcome::RefundExpired {
+            let [state_account, escrow_account, destination] = <[_; 3]>::try_from(pre_states)
+                .expect("Expiry requires [state PDA, escrow PDA, destination]");
+            (state_account, escrow_account, destination, None)
+        } else {
+            let [state_account, escrow_account, destination, authority] = <[_; 4]>::try_from(
+                pre_states,
+            )
+            .expect("Owner settlement requires [state PDA, escrow PDA, destination, authority]");
+            (state_account, escrow_account, destination, Some(authority))
+        };
     let mut state = BondState::from_bytes(&state_account.account.data);
     assert_eq!(
         state.version, STATE_VERSION,
@@ -177,15 +168,20 @@ fn settle(
         escrow_account.account.balance, state.amount,
         "Escrow balance mismatch"
     );
-    assert_eq!(
-        authority.account_id,
-        account_id(state.owner),
-        "Owner authority mismatch"
-    );
+    if let Some(authority) = &authority {
+        assert_eq!(
+            authority.account_id,
+            account_id(state.owner),
+            "Owner authority mismatch"
+        );
+    }
 
     let settlement = state
         .as_bond()
-        .settle(outcome, now, authority.is_authorized)
+        .settle_with_external_time_enforcement(
+            outcome,
+            authority.as_ref().is_some_and(|value| value.is_authorized),
+        )
         .expect("invalid settlement");
     assert_eq!(destination.account_id, account_id(settlement.destination));
     state.outcome = Some(settlement.outcome);
@@ -207,23 +203,18 @@ fn settle(
     )
     .with_pda_seeds(vec![escrow_seed(&state.id)]);
 
-    (
-        vec![
-            state_account,
-            escrow_account.clone(),
-            destination.clone(),
-            authority.clone(),
-            clock.clone(),
-        ],
-        vec![
-            AccountPostState::new(state_post),
-            AccountPostState::new(escrow_account.account),
-            AccountPostState::new(destination.account),
-            AccountPostState::new(authority.account),
-            AccountPostState::new(clock.account),
-        ],
-        vec![transfer],
-    )
+    let mut output_pre_states = vec![state_account, escrow_account.clone(), destination.clone()];
+    let mut output_post_states = vec![
+        AccountPostState::new(state_post),
+        AccountPostState::new(escrow_account.account),
+        AccountPostState::new(destination.account),
+    ];
+    if let Some(authority) = authority {
+        output_post_states.push(AccountPostState::new(authority.account.clone()));
+        output_pre_states.push(authority);
+    }
+
+    (output_pre_states, output_post_states, vec![transfer])
 }
 
 fn main() {
@@ -238,7 +229,7 @@ fn main() {
     ) = read_lee_inputs::<Instruction>();
     assert!(caller_program_id.is_none(), "Top-level invocation required");
 
-    let (pre_states, post_states, chained_calls) = match instruction {
+    let (pre_states, post_states, chained_calls, valid_from, valid_until) = match instruction {
         Instruction::Initialize {
             id,
             message_commitment,
@@ -248,10 +239,8 @@ fn main() {
             sink,
             amount,
             deadline_ms,
-        } => initialize(
-            self_program_id,
-            pre_states,
-            BondState {
+        } => {
+            let state = BondState {
                 version: STATE_VERSION,
                 id,
                 message_commitment,
@@ -262,9 +251,20 @@ fn main() {
                 amount,
                 deadline_ms,
                 outcome: None,
-            },
-        ),
-        Instruction::Settle { outcome } => settle(self_program_id, pre_states, outcome),
+            };
+            let result = initialize(self_program_id, pre_states, state.clone());
+            (result.0, result.1, result.2, None, Some(state.deadline_ms))
+        }
+        Instruction::Settle { outcome } => {
+            let deadline = if outcome == Outcome::RefundExpired {
+                let state_account = pre_states.first().expect("Expiry requires bond state");
+                Some(BondState::from_bytes(&state_account.account.data).deadline_ms)
+            } else {
+                None
+            };
+            let result = settle(self_program_id, pre_states, outcome);
+            (result.0, result.1, result.2, deadline, None)
+        }
     };
 
     ProgramOutput::new(
@@ -275,5 +275,9 @@ fn main() {
         post_states,
     )
     .with_chained_calls(chained_calls)
+    .valid_from_timestamp(valid_from)
+    .expect("valid bond start timestamp")
+    .valid_until_timestamp(valid_until)
+    .expect("valid bond end timestamp")
     .write();
 }

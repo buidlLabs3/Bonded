@@ -60,11 +60,11 @@ pub struct Settlement<const N: usize> {
 }
 
 impl<const N: usize> Bond<N> {
-    pub fn validate(&self, now: u64) -> Result<(), BondError> {
+    pub fn validate_static(&self) -> Result<(), BondError> {
         if self.amount == 0 {
             return Err(BondError::ZeroAmount);
         }
-        if self.deadline <= now {
+        if self.deadline == 0 {
             return Err(BondError::InvalidDeadline);
         }
         if self.owner == self.sink {
@@ -79,10 +79,30 @@ impl<const N: usize> Bond<N> {
         Ok(())
     }
 
+    pub fn validate(&self, now: u64) -> Result<(), BondError> {
+        self.validate_static()?;
+        if self.deadline <= now {
+            return Err(BondError::InvalidDeadline);
+        }
+        Ok(())
+    }
+
     pub fn settle(
         &mut self,
         outcome: Outcome,
         now: u64,
+        owner_authorized: bool,
+    ) -> Result<Settlement<N>, BondError> {
+        if outcome == Outcome::RefundExpired && now < self.deadline {
+            return Err(BondError::NotExpired);
+        }
+        self.settle_with_external_time_enforcement(outcome, owner_authorized)
+    }
+
+    /// Settle after the caller binds expiry to a chain-enforced timestamp window.
+    pub fn settle_with_external_time_enforcement(
+        &mut self,
+        outcome: Outcome,
         owner_authorized: bool,
     ) -> Result<Settlement<N>, BondError> {
         if self.outcome.is_some() {
@@ -97,9 +117,6 @@ impl<const N: usize> Bond<N> {
             }
             Outcome::RefundDeliveryFailed if !owner_authorized => {
                 return Err(BondError::UnauthorizedDeliveryFailure);
-            }
-            Outcome::RefundExpired if now < self.deadline => {
-                return Err(BondError::NotExpired);
             }
             _ => {}
         }
@@ -232,6 +249,23 @@ mod tests {
                 .destination,
             *b"send"
         );
+    }
+
+    #[test]
+    fn externally_enforced_expiry_needs_no_owner_signature() {
+        let mut value = bond();
+        let settlement = value
+            .settle_with_external_time_enforcement(Outcome::RefundExpired, false)
+            .unwrap();
+        assert_eq!(settlement.destination, *b"send");
+        assert_eq!(settlement.amount, 25);
+    }
+
+    #[test]
+    fn static_validation_rejects_an_unbounded_zero_deadline() {
+        let mut value = bond();
+        value.deadline = 0;
+        assert_eq!(value.validate_static(), Err(BondError::InvalidDeadline));
     }
 
     #[test]

@@ -344,7 +344,6 @@ version = "0.1.0"
 dependencies = [
  "authenticated_transfer_core",
  "bonded-inbox-program",
- "clock_core",
  "lee_core",
  "risc0-zkvm",
 ]
@@ -491,15 +490,6 @@ dependencies = [
  "block-buffer 0.12.1",
  "crypto-common 0.2.2",
  "inout",
-]
-
-[[package]]
-name = "clock_core"
-version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-execution-zone.git?rev=47eba256479f6f785acbd138834340703cd03401#47eba256479f6f785acbd138834340703cd03401"
-dependencies = [
- "borsh",
- "lee_core",
 ]
 
 [[package]]

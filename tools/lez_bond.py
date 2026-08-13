@@ -33,11 +33,10 @@ def _load_tool(name: str):
 lez_wallet = _load_tool("lez_wallet")
 lez_explorer = _load_tool("lez_explorer")
 
-CANONICAL_PROGRAM_ID = "fb83bbb4c6140cb07e9a206d67e96a496bd395eed231e0f6158a672549e9a75c"
+CANONICAL_PROGRAM_ID = "50ce86eebf3a01a5febe8cc735895adf361c2fa43a14947277e3d1050fbdcb8b"
 AUTHENTICATED_TRANSFER_PROGRAM_ID = (
     "fe96c4228babbe8bc578e3e25b884cacb07f8c86541f27ed676789875eef875a"
 )
-CLOCK_ACCOUNT = b"/LEZ/ClockProgramAccount/0000001"
 STATE_SEED_DOMAIN = b"/Bonded/v1/State/00000000000000/"
 ESCROW_SEED_DOMAIN = b"/Bonded/v1/Escrow/0000000000000/"
 HEX_32 = re.compile(r"(?i)^[0-9a-f]{64}$")
@@ -572,14 +571,12 @@ def execute(args) -> dict:
         bond_id = _hex32(args.bond_id, "bond ID")
         accounts["state"] = ffi.pda(program_id, STATE_SEED_DOMAIN, bond_id)
         accounts["escrow"] = ffi.pda(program_id, ESCROW_SEED_DOMAIN, bond_id)
-        accounts["clock"] = FfiBytes32.from_bytes(CLOCK_ACCOUNT)
         if args.operation == "initialize":
             words = initialize_words(args, accounts)
             ordered = [
                 (accounts["sender"], True),
                 (accounts["state"], False),
                 (accounts["escrow"], False),
-                (accounts["clock"], False),
             ]
             snapshot_names = ("sender", "owner", "sink", "state", "escrow")
             destination = None
@@ -593,9 +590,9 @@ def execute(args) -> dict:
                 (accounts["state"], False),
                 (accounts["escrow"], False),
                 (destination, False),
-                (accounts["owner"], args.outcome != "refund-expired"),
-                (accounts["clock"], False),
             ]
+            if args.outcome != "refund-expired":
+                ordered.append((accounts["owner"], True))
             snapshot_names = ("sender", "owner", "sink", "state", "escrow", "destination")
         inspection = {
             "schema_version": 1,
