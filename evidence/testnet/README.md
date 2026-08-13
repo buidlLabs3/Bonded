@@ -5,16 +5,19 @@ valid only while `tools/lez_explorer.py reconcile` returns `status: finalized`
 for the exact transaction and block. The original sequencer-only artifact is
 retained byte-for-byte under `history/` for auditability.
 
-The `settlement-program-deployment`, `register-sender`, and `register-owner`
-inventory rows
-currently pass the offline gate using primary and independently confirmed
-observations plus paired browser captures. Those three passing rows do not qualify
-the remaining wallet, lifecycle, spending-control, or paid-task rows. The
+The `settlement-program-deployment`, `register-sender`, `register-owner`, and
+`register-sink` inventory rows currently pass the offline gate using primary
+and independently confirmed observations plus paired browser captures. Those
+four passing rows do not qualify the remaining wallet, lifecycle,
+spending-control, or paid-task rows. The
 unindexed `register-sender-independent.json` and
 `register-owner-independent.json` observations are retained as history: each
 agreed with its canonical transaction but was only one finalized block after
 the corresponding primary observation, so neither is used to meet the
-three-block separation rule.
+three-block separation rule. The unindexed
+`register-sink-independent-unconfirmed.json` observation and
+`screenshots/register-sink-unconfirmed/` captures are likewise retained as
+history and do not satisfy the release inventory.
 
 `required-evidence.json` is the complete public transaction inventory for the
 release gate. Each row requires two distinct finalized machine observations,

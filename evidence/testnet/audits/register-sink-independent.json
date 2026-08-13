@@ -1,0 +1,104 @@
+{
+  "block": 4891,
+  "block_hash": "e27c63933eb9a742590f5b9b1025b625ebc809f4ecda52fc9e1af3f92c062a2e",
+  "checks": {
+    "confirmation_depth_satisfied": true,
+    "expected_accounts_match": true,
+    "expected_program_matches": true,
+    "explorer_block_contains_transaction": true,
+    "explorer_block_hash_matches_sequencer": true,
+    "explorer_block_is_finalized": true,
+    "explorer_reached_candidate_block": true,
+    "explorer_transaction_hash_matches": true,
+    "explorer_transaction_type_matches": true,
+    "sequencer_block_id_matches": true,
+    "sequencer_block_is_finalized": true,
+    "sequencer_transaction_block_matches": true,
+    "sequencer_transaction_hash_matches": true,
+    "sequencer_transaction_type_matches": true,
+    "three_or_more_finalized_overlaps_match": true
+  },
+  "component": "testnet-wallet",
+  "confirmation_depth": 704,
+  "explorer_urls": {
+    "block": "https://explorer.testnet.lez.logos.co/block/4891",
+    "transaction": "https://explorer.testnet.lez.logos.co/transaction/2f1df54d2658dc6ee45ae3eaac43902fcf548462cba7ff6599ca0670abc759ac"
+  },
+  "finality": "Finalized",
+  "kind": "wallet-registration",
+  "network": "lez-testnet",
+  "network_identity": {
+    "channel_id": "0101010101010101010101010101010101010101010101010101010101010101",
+    "lez_release": "v0.2.4",
+    "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401"
+  },
+  "observations": {
+    "explorer_latest_finalized": {
+      "bedrock_status": "Finalized",
+      "block_id": 5595,
+      "hash": "d5b93ed4acd89504a320654cd8af714c2acc92a585255416c19747afd5735bd8",
+      "timestamp": 1786609889129
+    },
+    "indexer_finalized_lag_blocks": 0,
+    "lag_scan_complete": true,
+    "newest_sequencer_finalized_at_scan": 5595,
+    "overlapping_finalized_blocks": [
+      {
+        "block_id": 5595,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "d5b93ed4acd89504a320654cd8af714c2acc92a585255416c19747afd5735bd8",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "d5b93ed4acd89504a320654cd8af714c2acc92a585255416c19747afd5735bd8"
+      },
+      {
+        "block_id": 5594,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "fabe98d73ec8a01ab92505880888d3442bf03be9d4e567af72458b7ba8ee3315",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "fabe98d73ec8a01ab92505880888d3442bf03be9d4e567af72458b7ba8ee3315"
+      },
+      {
+        "block_id": 5593,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "6aaada98eec09210ac5d9432c2d3b65765a6f2dbb2e105d073bff968187688dd",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "6aaada98eec09210ac5d9432c2d3b65765a6f2dbb2e105d073bff968187688dd"
+      }
+    ],
+    "sequencer_head": {
+      "bedrock_status": "Pending",
+      "block_id": 5651,
+      "hash": "fc706254d869ba8b6228d5b81e475ab977486d4da61714fce72cc256a38f74df",
+      "prev_block_hash": "0eabbe8286d942a6acad0589e5f774d88832dd8bd446a9bb5574d989b7b9a0d3",
+      "timestamp": 1786613255752,
+      "transaction_count": 1
+    }
+  },
+  "observed_at_utc": "2026-08-13T09:27:40+00:00",
+  "operation": "register-sink",
+  "public_account_ids": [
+    "FW6NaTcfeb354webZg3UqDLMVUFKv166mGTX6bxGswua"
+  ],
+  "public_program_id": "J8otq1J8Zpjhhpp6FPfhFtWKTCkLjthdk12cwHiMZCTB",
+  "required_confirmation_depth": 3,
+  "schema_version": 1,
+  "serialized_transaction_size": 196,
+  "services": {
+    "explorer": "https://explorer.testnet.lez.logos.co",
+    "indexer": "server-side behind official explorer; no public endpoint discovered",
+    "sequencer": "https://testnet.lez.logos.co"
+  },
+  "status": "finalized",
+  "transaction": "2f1df54d2658dc6ee45ae3eaac43902fcf548462cba7ff6599ca0670abc759ac",
+  "transaction_type": "Public",
+  "verifier": {
+    "command": "python3 tools/lez_explorer.py transaction [exact identifiers]",
+    "observer": "buidllabs3-independent-confirmed",
+    "result": "pass",
+    "source": "tools/lez_explorer.py",
+    "source_commit": "32c9254051c2836a1cbac256a4bc62979509ccc3"
+  }
+}

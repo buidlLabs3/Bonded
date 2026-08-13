@@ -26,12 +26,14 @@
   gate. The owner-registration transaction
   `9f8e1461b7f3a3dc805a392811d8849e67d65d099bde25c88639ff85f22c7c16`
   is finalized in block 4568 and also passes the paired public-explorer evidence
-  gate. Sink registration, sender funding, and bond transactions remain pending
-  and must be validated separately.
+  gate. The sink-registration transaction
+  `2f1df54d2658dc6ee45ae3eaac43902fcf548462cba7ff6599ca0670abc759ac`
+  is finalized in block 4891 and passes the same gate. Sender funding and bond
+  transactions remain pending and must be validated separately.
 - The real LEZ guest and program-deployment path do not yet provide a wallet/Core
   invocation adapter or an end-to-end bond execution proof.
-- The sink testnet identity, agent-profile deployments, bond
-  invocation proofs, and CU measurements have not been collected.
+- Agent-profile deployments, bond invocation proofs, and CU measurements have
+  not been collected.
 - `scripts/e2e-real-proof.sh` intentionally exits nonzero even when
   `RISC0_DEV_MODE=0` until the real sequencer environment is provisioned.
 - Basecamp QML assets have static checks but not live host/replica, screen-reader,
