@@ -1,0 +1,29 @@
+{
+  "attestations": [
+    {
+      "public_key": "a2a81e2506e27820ab27436a4e0eb1e979aa0ad931bb5eb3afabe08bed8e34b5",
+      "role": "policy-owner",
+      "signature": "0050718477e1465486faa3fbe8c53cc9324b237f16c43d88fec9c68bc4bec6892b6091962467de03bbc6e8c835ccbf489df0c8857fd7b064332e45244b778d0c"
+    }
+  ],
+  "payload": {
+    "amount": 2,
+    "claims": {
+      "decision": "autonomous-below-limit",
+      "policy": {
+        "per_period": 9,
+        "per_transaction": 2
+      }
+    },
+    "created_at_ms": 1786644338492,
+    "expires_at_ms": 1791828338492,
+    "network": "lez-testnet",
+    "nonce": "9ec3c47c5c1fec2993e66f52472cd138e0f89262c6fb1a8ea668d0ce46318fc1",
+    "operation": "below-limit-transfer",
+    "profile": "settlement",
+    "recipient": "EsxbHEvBVTKAcz2vPq46NSi1AG9pbVYk65LyNfRQknZV",
+    "sender": "6oFNU77YaPqJVB69t1rPwGdYeULXixugNR9KJiNocWLR"
+  },
+  "payload_sha256": "a284016c1561e8a486e8511faaa7b94f5491401f99c08b0658f4890f0f1108b4",
+  "schema_version": 1
+}

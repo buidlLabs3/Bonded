@@ -1,0 +1,30 @@
+{
+  "attestations": [
+    {
+      "public_key": "a613d2cdb1dcb90448c9c6f11a7d5951244115224ceaf8eef7bfd444c13a2d05",
+      "role": "owner",
+      "signature": "a7d18331c36137726c81b737a10579506bfa8ba28280428602627991c7104441f30cda7756da5d4c8dfa61a6b3ef70f14bef66d533b6391cdbc7f4fb68c0c20a"
+    }
+  ],
+  "payload": {
+    "amount": 3,
+    "claims": {
+      "decision": "owner-approved",
+      "policy": {
+        "per_period": 9,
+        "per_transaction": 2
+      },
+      "proposal_id": "bonded-owner-approval-testnet-v2"
+    },
+    "created_at_ms": 1786644338492,
+    "expires_at_ms": 1791828338492,
+    "network": "lez-testnet",
+    "nonce": "f4350bc3a8a150bf8c159723aaddbe2c613aa1a4eaab7715d9b6ce56dd132ff3",
+    "operation": "owner-approved-transfer",
+    "profile": "settlement",
+    "recipient": "EsxbHEvBVTKAcz2vPq46NSi1AG9pbVYk65LyNfRQknZV",
+    "sender": "6oFNU77YaPqJVB69t1rPwGdYeULXixugNR9KJiNocWLR"
+  },
+  "payload_sha256": "fc9b9d7170d4d17f589c89d875e0988623d1bbc80c50f324d32d5ee3c48261af",
+  "schema_version": 1
+}

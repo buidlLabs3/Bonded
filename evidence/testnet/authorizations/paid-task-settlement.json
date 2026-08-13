@@ -1,0 +1,34 @@
+{
+  "attestations": [
+    {
+      "public_key": "4c931bbc37bc28835e73775afafb46ce228f4c75ef9dbcffa664f95edd68b2b8",
+      "role": "requester",
+      "signature": "837f629286e1934eabc5ce7785cb55e436e523b4d4cfa1c8d5d901be53dcfc83cd5438f8074fa3b684f63cafe2a62cd918f54382919bfb58b50206535bb36409"
+    },
+    {
+      "public_key": "7646fbf0cbb8678b348deb624830ec505d54c29833344ae8746fe2abb766041d",
+      "role": "provider",
+      "signature": "601435723fcff9e444f73d4664cee1add280536f7958db8d10645e94cd4fb01590245260f77db46dcf503c40664ad565fdc0b7b84a6266fc433855e917d17409"
+    }
+  ],
+  "payload": {
+    "amount": 4,
+    "claims": {
+      "provider": "FW6NaTcfeb354webZg3UqDLMVUFKv166mGTX6bxGswua",
+      "requester": "6oFNU77YaPqJVB69t1rPwGdYeULXixugNR9KJiNocWLR",
+      "skill": "storage.audit",
+      "task_id": "bonded-a2a-paid-task-testnet-v2",
+      "task_state": "completed"
+    },
+    "created_at_ms": 1786644338492,
+    "expires_at_ms": 1791828338492,
+    "network": "lez-testnet",
+    "nonce": "a35b9ff84cd26640d0f0cd09f0294bd6b0c7b0cb10632c715646e219cdae7ce7",
+    "operation": "paid-task-settlement",
+    "profile": "settlement",
+    "recipient": "FW6NaTcfeb354webZg3UqDLMVUFKv166mGTX6bxGswua",
+    "sender": "6oFNU77YaPqJVB69t1rPwGdYeULXixugNR9KJiNocWLR"
+  },
+  "payload_sha256": "51629810bd17591ee9f7095a472e7f67530846dc9042cb4a022dd75ca54a68ab",
+  "schema_version": 1
+}

@@ -1,0 +1,8 @@
+{
+  "decision": "owner-approved",
+  "policy": {
+    "per_period": 9,
+    "per_transaction": 2
+  },
+  "proposal_id": "bonded-owner-approval-testnet-v2"
+}

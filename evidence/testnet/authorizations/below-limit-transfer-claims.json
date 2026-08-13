@@ -1,0 +1,7 @@
+{
+  "decision": "autonomous-below-limit",
+  "policy": {
+    "per_period": 9,
+    "per_transaction": 2
+  }
+}
