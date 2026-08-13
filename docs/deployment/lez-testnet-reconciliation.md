@@ -1,8 +1,11 @@
-# LEZ Testnet Reconciliation - 2026-08-12
+# LEZ Testnet Reconciliation History - 2026-08-12
 
 ## Outcome
 
-The earlier `Transaction not found` / `Block not found` observation is resolved.
+This page records the prior `d033...` publication. It is retained as historical
+evidence after the corrected official-wallet program `50ce...` became canonical
+in finalized block 6001. The earlier `Transaction not found` / `Block not found`
+observation is resolved.
 At `2026-08-12T08:27:21Z`, committed verifier
 `e4a33e36cfce8b9e8547ee4aa8612d0b948dd20b` independently read the official
 sequencer and explorer and returned `finalized` for transaction
@@ -46,6 +49,10 @@ Future observations use a bounded policy: require three confirmation blocks and
 scan up to 32 blocks beyond the explorer finalized tip. A transaction stays
 `pending-indexer` while the explorer is below its block. Any mismatch after the
 explorer reaches the block is `disputed` and blocks downstream testnet claims.
+
+This record must not be used as the current lifecycle program. The release
+inventory points to the v2 observations and explorer captures for transaction
+`fc88b2bad2b51026fb97c6cc8b4943ead59f8a3cc0e515f9f058f9e49fb11ea9`.
 
 ## Reproduction
 

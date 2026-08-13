@@ -36,8 +36,8 @@ or a testnet result.
 | BOND-02 | Rejected goes to fixed sink, never owner | 09, 10 | C++ and Rust invariant tests | verified-local |
 | BOND-03 | Expired and failed delivery return full bond | 09, 10 | C++ and Rust lifecycle tests | verified-local |
 | BOND-04 | Classification alone cannot confiscate funds | 12 | triage and inbox adversarial tests | verified-local |
-| BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20A-20F | Canonical deployment has two separated finalized observations and paired transaction/block captures; private-transfer real-proof and lifecycle calls remain pending | implemented |
-| LEZ-01 | Release transactions use the pinned official wallet path | 20B | Wallet adapter tests plus standalone qualification; 4/5 cases currently pass | implemented |
+| BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20A-20F | Corrected official-wallet deployment has two separated finalized observations and paired transaction/block captures; private-transfer real-proof and lifecycle calls remain pending | implemented |
+| LEZ-01 | Release transactions use the pinned official wallet path | 20B | Corrected deployment and wallet provisioning use the pinned official path; standalone qualification remains 4/5 while the private-transfer proof runs | implemented |
 | LEZ-02 | Settlement deployment passes the complete public explorer evidence gate | 20C, 20F | `settlement-program-deployment` row passes the offline gate with exact binary/program/transaction/block bindings and paired browser captures | implemented |
 | LEZ-03 | Registration/funding transactions pass the public explorer evidence gate | 20B, 20E, 20F | All three `register-*` rows and `fund-sender` pass the offline evidence gate; whole-inventory live release audit remains pending | implemented |
 | LEZ-04 | Acceptance, rejection, expiry, and delivery-failure transactions pass the public explorer gate | 20D, 20F | Eight lifecycle inventory rows | planned |

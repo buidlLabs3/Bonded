@@ -11,11 +11,10 @@
   Core does not expose the required shielded LEZ wallet/program host API.
 - The official Logos wallet module currently exposes a work-in-progress Ethereum
   API, not the required shielded LEZ NPK/ISK surface.
-- The historical program deployment now passes its required explorer-evidence
-  row with two separated finalized observations and paired fresh-browser
-  transaction/block captures. It used the direct sequencer client predating
-  Chunk 20B, so it is not evidence of an official wallet call path or a completed
-  lifecycle.
+- The corrected settlement program is deployed through the pinned official
+  wallet and passes its explorer-evidence row with two separated finalized
+  observations and paired fresh-browser captures. Publication does not prove a
+  completed bond lifecycle or an agent-profile deployment.
 - Official-wallet standalone qualification currently passes deployment,
   malformed-program rejection, insufficient-funds rejection, and duplicate
   replay rejection. The real privacy-preserving transfer proof is still pending,
@@ -33,8 +32,9 @@
   is finalized in block 5661, passes the gate, and reconciles an exact 150-unit
   sender credit. Bond lifecycle and use-case transactions remain pending and
   must be validated separately.
-- The real LEZ guest and program-deployment path do not yet provide a wallet/Core
-  invocation adapter or an end-to-end bond execution proof.
+- The official-wallet Bonded invocation adapter and sequential matrix runner are
+  implemented and locally tested; the eight public lifecycle calls and their
+  explorer evidence are not yet complete.
 - Agent-profile deployments, bond invocation proofs, and CU measurements have
   not been collected.
 - `scripts/e2e-real-proof.sh` intentionally exits nonzero even when

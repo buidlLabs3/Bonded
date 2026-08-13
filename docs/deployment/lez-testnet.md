@@ -7,18 +7,20 @@ On 2026-08-12 its built-in authenticated-transfer and privacy-circuit program
 IDs matched the public endpoint. The preflight checks those exact IDs on every
 run and refuses deployment if the network ABI has drifted.
 
-The release at commit `3c3054f59358864ca3ce93578e6d874778f1e230` is published
-as program `fb83bbb4c6140cb07e9a206d67e96a496bd395eed231e0f6158a672549e9a75c`.
-The official explorer now resolves
-[transaction `d033...`](https://explorer.testnet.lez.logos.co/transaction/d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad)
+The corrected release at commit
+`58cdf11cf11147b0d90d5b024b286be0892adba1` is published through the official
+wallet as program
+`50ce86eebf3a01a5febe8cc735895adf361c2fa43a14947277e3d1050fbdcb8b`.
+The official explorer resolves
+[transaction `fc88...`](https://explorer.testnet.lez.logos.co/transaction/fc88b2bad2b51026fb97c6cc8b4943ead59f8a3cc0e515f9f058f9e49fb11ea9)
 as a Program Deployment Transaction and shows it in finalized
-[block 4035](https://explorer.testnet.lez.logos.co/block/4035), hash
-`603a76b3c88c4a611906624ce6a347c93108335be3f27dd6d03a662250d8f142`.
-The reconciled evidence is `evidence/testnet/settlement-program.json`; the
-sequencer-only artifact originally created at submission time is preserved in
-`evidence/testnet/history/settlement-program-sequencer-included-20260812.json`.
-See `docs/deployment/lez-testnet-reconciliation.md` for the observed service
-tips, overlapping canonical blocks, and historical classification.
+[block 6001](https://explorer.testnet.lez.logos.co/block/6001), hash
+`0147db91d082aab6ad7556f87aea261ab1efc86816b72a4f01f18415f718af73`.
+The release inventory uses
+`evidence/testnet/deployment/settlement-program-v2-primary.json` and
+`evidence/testnet/audits/settlement-program-v2-independent.json`. The prior
+`d033...` deployment and its reconciliation remain unchanged historical
+records; see `docs/deployment/lez-testnet-reconciliation.md`.
 
 ## Program Publication
 
