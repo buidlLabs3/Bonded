@@ -37,6 +37,15 @@ identifier mismatches all fail qualification. `evidence.schema.json` documents
 the common finalized observation contract; the gate enforces the cross-file and
 live-network rules that JSON Schema cannot express.
 
+Bond lifecycle candidates are submitted and state-reconciled with
+`tools/lez_bond.py`, then promoted with `tools/lez_bond_evidence.py`. The three
+application value-transfer candidates are submitted with
+`tools/lez_value_transfer.py` only after their exact policy, approval, or task
+payload has the required Ed25519 attestations; `tools/lez_value_evidence.py`
+promotes those hashes. Candidate status and a local proof never satisfy an
+inventory row until both public observations and both fresh-browser captures
+exist.
+
 `python3 tools/traceability_gate.py` is part of ordinary CI. While no requirement
 claims `verified-testnet`, it validates the matrix vocabulary and uniqueness. If
 any row makes that claim, the command also requires this entire offline evidence

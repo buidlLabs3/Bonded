@@ -85,6 +85,76 @@ operation/outcome account shape, compares the finalized hash and block back to
 the lifecycle journal, and creates the observation immutably. Use a distinct
 observer and output path for the later independent observation.
 
+## Spending And Paid-Task Transfers
+
+`tools/lez_value_transfer.py` binds the three value-moving application claims to
+real official-wallet privacy-preserving transfers. It loads the authenticated
+transfer ELF from the pinned FFI, derives and verifies its canonical image ID,
+serializes the exact `Transfer { amount }` instruction, and reconciles sender and
+recipient balances before and after finality. The supported operations and
+required application attestations are:
+
+| Operation | Required Ed25519 roles | Required claim |
+|---|---|---|
+| `below-limit-transfer` | `policy-owner` | amount is within both signed policy limits |
+| `owner-approved-transfer` | `owner` | proposal ID and amount above the per-transaction limit |
+| `paid-task-settlement` | `requester`, `provider` | completed task ID, parties, and skill |
+
+Create a claims JSON object, then create and sign the authorization. Signing
+keys are raw 32-byte Ed25519 private keys held in external mode-`0600` files;
+only public keys and signatures enter the authorization artifact. Use a validity
+window long enough for real proof generation:
+
+```bash
+python3 tools/lez_value_transfer.py create-authorization \
+  --operation below-limit-transfer --profile settlement \
+  --sender "$SENDER" --recipient "$RECIPIENT" --amount 2 \
+  --nonce "$NONCE" --created-at-ms "$CREATED_AT_MS" \
+  --expires-at-ms "$EXPIRES_AT_MS" --claims /path/to/claims.json \
+  --evidence /path/to/unsigned-authorization.json
+python3 tools/lez_value_transfer.py sign-authorization \
+  --authorization /path/to/unsigned-authorization.json \
+  --private-key /external/private/policy-owner.key --role policy-owner \
+  --evidence evidence/testnet/authorizations/below-limit-transfer.json
+```
+
+The paid-task operation repeats the signing command sequentially, passing the
+first signed artifact as the second command's input and using separate
+`requester` and `provider` keys. Execute only after reviewing the signed payload:
+
+```bash
+RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+python3 tools/lez_value_transfer.py execute --submit \
+  --wallet-source "$BONDED_LEZ_SOURCE" --wallet-home "$LEE_WALLET_HOME_DIR" \
+  --operation below-limit-transfer --profile settlement \
+  --sender "$SENDER" --recipient "$RECIPIENT" --amount 2 \
+  --authorization evidence/testnet/authorizations/below-limit-transfer.json \
+  --trusted-signers /external/config/trusted-value-signers.json \
+  --timeout 21600 \
+  --evidence evidence/testnet/candidates/below-limit-transfer.json
+```
+
+The trusted signer map is an external JSON object from required role to pinned
+Ed25519 public key. It must contain exactly the roles required by the operation.
+The Ed25519 signatures prove the application decision; the sender account
+signature inside the official wallet transaction separately authorizes the LEZ
+value movement. After sequencer finality, promote the candidate without opening
+the wallet:
+
+```bash
+python3 tools/lez_value_evidence.py \
+  --candidate evidence/testnet/candidates/below-limit-transfer.json \
+  --authorization evidence/testnet/authorizations/below-limit-transfer.json \
+  --trusted-signers /external/config/trusted-value-signers.json \
+  --operation below-limit-transfer \
+  --verifier-commit "$(git rev-parse HEAD)" --observer primary \
+  --evidence evidence/testnet/spending/below-limit-transfer.json
+```
+
+Use a later observation with a distinct observer, then capture the exact
+transaction and block explorer pages. Application attestations do not reveal or
+replace the LEZ wallet key, and no signing private key belongs in this repository.
+
 ## Secret-Safe Wallet Setup
 
 Create a dedicated testnet-only wallet directory outside the repository. Set
