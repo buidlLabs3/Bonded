@@ -132,6 +132,9 @@ only public keys and signatures enter the authorization artifact. Use a validity
 window long enough for real proof generation:
 
 ```bash
+install -d -m 0700 /external/private/bonded-value-signers
+python3 tools/lez_value_transfer.py generate-signing-key \
+  --private-key /external/private/bonded-value-signers/policy-owner.key
 python3 tools/lez_value_transfer.py create-authorization \
   --operation below-limit-transfer --profile settlement \
   --sender "$SENDER" --recipient "$RECIPIENT" --amount 2 \
@@ -143,6 +146,10 @@ python3 tools/lez_value_transfer.py sign-authorization \
   --private-key /external/private/policy-owner.key --role policy-owner \
   --evidence evidence/testnet/authorizations/below-limit-transfer.json
 ```
+
+Key generation is exclusive: the command refuses an existing destination, a
+symlink, or a group/world-accessible parent directory and prints only the public
+key. Store that public key in the operation's trusted signer map before signing.
 
 The paid-task operation repeats the signing command sequentially, passing the
 first signed artifact as the second command's input and using separate

@@ -185,6 +185,29 @@ class ValueTransferTests(unittest.TestCase):
             self.assertEqual(signed["attestations"][0]["role"], "policy-owner")
             value.validate_authorization(signed, 2000)
 
+    def test_signing_key_generation_is_exclusive_and_private(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o700)
+            key = root / "policy-owner.key"
+            result = value.generate_signing_key(key)
+            self.assertEqual(result["algorithm"], "Ed25519")
+            self.assertEqual(len(result["public_key"]), 64)
+            self.assertEqual(key.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(
+                value.public_key_from_private(bytes.fromhex(key.read_text().strip())).hex(),
+                result["public_key"],
+            )
+            with self.assertRaisesRegex(value.ValueTransferError, "already exist"):
+                value.generate_signing_key(key)
+
+    def test_signing_key_generation_rejects_permissive_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o755)
+            with self.assertRaisesRegex(value.ValueTransferError, "must be private"):
+                value.generate_signing_key(root / "owner.key")
+
 
 if __name__ == "__main__":
     unittest.main()

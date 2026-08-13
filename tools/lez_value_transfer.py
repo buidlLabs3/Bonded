@@ -134,6 +134,37 @@ def public_key_from_private(private_key: bytes) -> bytes:
     return encoded[len(ED25519_PUBLIC_DER_PREFIX) :]
 
 
+def generate_signing_key(path: Path) -> dict:
+    if path.is_symlink() or path.exists():
+        raise ValueTransferError("signing key path must not already exist")
+    try:
+        parent = path.parent.resolve(strict=True)
+    except OSError as exc:
+        raise ValueTransferError("signing key parent directory does not exist") from exc
+    if not parent.is_dir() or parent.stat().st_mode & 0o077:
+        raise ValueTransferError("signing key parent directory must be private")
+    destination = parent / path.name
+    key = os.urandom(32)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(destination, flags, 0o600)
+        with os.fdopen(descriptor, "w", encoding="ascii") as output:
+            output.write(key.hex() + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        if destination.stat().st_mode & 0o077:
+            raise ValueTransferError("generated signing key permissions are not private")
+    except OSError as exc:
+        raise ValueTransferError("could not create the signing key securely") from exc
+    return {
+        "algorithm": "Ed25519",
+        "private_key_path": str(destination),
+        "public_key": public_key_from_private(key).hex(),
+    }
+
+
 def sign_message(private_key: bytes, message: bytes) -> bytes:
     if len(private_key) != 32:
         raise ValueTransferError("Ed25519 private key must be exactly 32 bytes")
@@ -610,6 +641,8 @@ def execute(args) -> dict:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Official-wallet LEZ use-case transfer adapter")
     commands = result.add_subparsers(dest="command", required=True)
+    generate = commands.add_parser("generate-signing-key")
+    generate.add_argument("--private-key", type=Path, required=True)
     create = commands.add_parser("create-authorization")
     create.add_argument("--operation", choices=tuple(OPERATIONS), required=True)
     create.add_argument("--profile", required=True)
@@ -646,7 +679,9 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     try:
-        if args.command == "create-authorization":
+        if args.command == "generate-signing-key":
+            response = generate_signing_key(args.private_key)
+        elif args.command == "create-authorization":
             response = create_authorization(args)
         elif args.command == "sign-authorization":
             response = sign_authorization(args)
