@@ -85,6 +85,29 @@ operation/outcome account shape, compares the finalized hash and block back to
 the lifecycle journal, and creates the observation immutably. Use a distinct
 observer and output path for the later independent observation.
 
+For the complete public matrix, `tools/lez_bond_matrix.py` creates deterministic
+privacy-safe commitments for four fresh bonds and runs the eight successful
+calls sequentially. It initializes the expiry case first, then acceptance,
+rejection, and delivery failure, using their proof time before the final expiry
+refund. Every completed step must have its own finalized candidate before the
+runner advances. The matrix journal makes a timeout resumable and refuses an
+ambiguous retry:
+
+```bash
+RAYON_NUM_THREADS=1 RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+python3 tools/lez_bond_matrix.py --submit --wait-for-expiry \
+  --wallet-source "$BONDED_LEZ_SOURCE" --wallet-home "$LEE_WALLET_HOME_DIR" \
+  --sender "$SENDER" --owner "$OWNER" --sink "$SINK" \
+  --release-commit "$(git rev-parse HEAD)" --amount 10 \
+  --expiry-delay-ms 28800000 --timeout 21600 \
+  --journal evidence/testnet/candidates/bond-matrix-v2.json
+```
+
+Run it only after the exact corrected deployment is finalized and explorer
+reconciled. Use one proof process at a time. The runner does not turn rejected
+early-expiry, unauthorized, replay, or conflict attempts into successful
+evidence; those negative cases require separate no-state-change records.
+
 ## Spending And Paid-Task Transfers
 
 `tools/lez_value_transfer.py` binds the three value-moving application claims to
