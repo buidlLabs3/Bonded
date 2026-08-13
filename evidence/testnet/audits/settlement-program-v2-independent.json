@@ -1,0 +1,103 @@
+{
+  "binary_sha256": "8bbc443fa4580b8cffad387918675f0a175411fe268cac0ac3df74793184856a",
+  "binary_size": 368324,
+  "block": 6001,
+  "block_hash": "0147db91d082aab6ad7556f87aea261ab1efc86816b72a4f01f18415f718af73",
+  "checks": {
+    "bytecode_digest_matches": true,
+    "bytecode_size_matches": true,
+    "confirmation_depth_satisfied": true,
+    "explorer_block_contains_transaction": true,
+    "explorer_block_hash_matches_sequencer": true,
+    "explorer_block_is_finalized": true,
+    "explorer_reached_candidate_block": true,
+    "explorer_transaction_hash_matches": true,
+    "explorer_transaction_type_matches": true,
+    "sequencer_block_id_matches": true,
+    "sequencer_block_is_finalized": true,
+    "sequencer_transaction_block_matches": true,
+    "sequencer_transaction_hash_matches": true,
+    "sequencer_transaction_type_matches": true,
+    "three_or_more_finalized_overlaps_match": true
+  },
+  "component": "settlement-program",
+  "confirmation_depth": 8,
+  "explorer_urls": {
+    "block": "https://explorer.testnet.lez.logos.co/block/6001",
+    "transaction": "https://explorer.testnet.lez.logos.co/transaction/fc88b2bad2b51026fb97c6cc8b4943ead59f8a3cc0e515f9f058f9e49fb11ea9"
+  },
+  "finality": "Finalized",
+  "kind": "program-deployment",
+  "network": "lez-testnet",
+  "network_identity": {
+    "channel_id": "0101010101010101010101010101010101010101010101010101010101010101",
+    "lez_release": "v0.2.4",
+    "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401"
+  },
+  "observations": {
+    "explorer_latest_finalized": {
+      "bedrock_status": "Finalized",
+      "block_id": 6009,
+      "hash": "7f13cb54a5fdae46b1898e7d1a6534affc2b3a21346626e16bdb6b9b0cce7263",
+      "timestamp": 1786634780181
+    },
+    "indexer_finalized_lag_blocks": 0,
+    "lag_scan_complete": true,
+    "newest_sequencer_finalized_at_scan": 6009,
+    "overlapping_finalized_blocks": [
+      {
+        "block_id": 6009,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "7f13cb54a5fdae46b1898e7d1a6534affc2b3a21346626e16bdb6b9b0cce7263",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "7f13cb54a5fdae46b1898e7d1a6534affc2b3a21346626e16bdb6b9b0cce7263"
+      },
+      {
+        "block_id": 6008,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "d64a34f3cd77aba159eb77a25d87f2a3a4df125887e0daba16921567222e54ac",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "d64a34f3cd77aba159eb77a25d87f2a3a4df125887e0daba16921567222e54ac"
+      },
+      {
+        "block_id": 6007,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "176029d7573d93692aecc29c02706fb717cc4d16d370819e624fe5c41ae007d5",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "176029d7573d93692aecc29c02706fb717cc4d16d370819e624fe5c41ae007d5"
+      }
+    ],
+    "sequencer_head": {
+      "bedrock_status": "Pending",
+      "block_id": 6069,
+      "hash": "644000bfe2b2f4579239bbff4638009bbe08c1cebaeb996a5bee8aae53383f39",
+      "prev_block_hash": "075ed67b41b3789890091ee7336c4f5e8568740bbcda411f889faf605245a974",
+      "timestamp": 1786638387561,
+      "transaction_count": 1
+    }
+  },
+  "observed_at_utc": "2026-08-13T16:27:14+00:00",
+  "operation": "program-deployment",
+  "program_id": "50ce86eebf3a01a5febe8cc735895adf361c2fa43a14947277e3d1050fbdcb8b",
+  "release_commit": "58cdf11cf11147b0d90d5b024b286be0892adba1",
+  "required_confirmation_depth": 3,
+  "schema_version": 1,
+  "services": {
+    "explorer": "https://explorer.testnet.lez.logos.co",
+    "indexer": "server-side behind official explorer; no public endpoint discovered",
+    "sequencer": "https://testnet.lez.logos.co"
+  },
+  "status": "finalized",
+  "transaction": "fc88b2bad2b51026fb97c6cc8b4943ead59f8a3cc0e515f9f058f9e49fb11ea9",
+  "transaction_type": "ProgramDeployment",
+  "verifier": {
+    "command": "python3 tools/lez_explorer.py reconcile --evidence evidence/testnet/settlement-program.json",
+    "observer": "independent-release-v2-audit",
+    "result": "pass",
+    "source": "tools/lez_explorer.py",
+    "source_commit": "78c5bb9a29f10c38d3b49189cb389d815aeaed80"
+  }
+}

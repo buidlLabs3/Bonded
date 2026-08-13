@@ -1,9 +1,14 @@
 # Testnet Evidence
 
-`settlement-program.json` is the current public program-publication record. It is
-valid only while `tools/lez_explorer.py reconcile` returns `status: finalized`
-for the exact transaction and block. The original sequencer-only artifact is
-retained byte-for-byte under `history/` for auditability.
+The corrected settlement program is transaction
+`fc88b2bad2b51026fb97c6cc8b4943ead59f8a3cc0e515f9f058f9e49fb11ea9`
+in finalized block 6001. Its release inventory uses
+`deployment/settlement-program-v2-primary.json` and
+`audits/settlement-program-v2-independent.json`, bound to the exact 368,324-byte
+binary and program ID
+`50ce86eebf3a01a5febe8cc735895adf361c2fa43a14947277e3d1050fbdcb8b`.
+The prior `settlement-program.json`, primary/audit observations, and original
+sequencer-only artifact remain unchanged as historical records.
 
 The `settlement-program-deployment`, `register-sender`, `register-owner`,
 `register-sink`, and `fund-sender` inventory rows currently pass the offline
