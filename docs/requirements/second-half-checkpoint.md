@@ -11,7 +11,7 @@ submission-complete claim.
 | 14 | Exact 21-skill catalog, signed configuration, isolation | `test_skill_runtime` | Stable dynamic third-party ABI |
 | 15 | Plan/deploy/status/health/policy/fund/approval/backup/restore/upgrade/rollback/teardown CLI | `test_cli.py` | Clean machine with live Logos Core service |
 | 16 | Packaged QML owner views and safety confirmation | `test_assets.py`, `nix build .#basecamp-lgx` | Live Basecamp replica, accessibility, and viewport evidence |
-| 17 | Redaction, breaker, bounded queue, SIGKILL/WAL recovery, persisted-bond settlement and deduplicated receipt recovery, reconciliation/runbook | `test_main`, `test_second_half` | Official multi-process adapter fault injection |
+| 17 | Redaction, breaker, bounded queue, SIGKILL/WAL recovery, persisted-bond settlement and deduplicated receipt recovery, reconciliation/runbook; pinned Delivery/Storage host bindings | `test_main`, `test_second_half`, adapter service tests, `nix build .#lib` | Official multi-process adapter fault injection |
 | 18 | Fast CI matrix and conditional fail-closed real-proof job | `.github/workflows/ci.yml` | Provisioned self-hosted sequencer runner |
 | 19 | Threat/privacy/economic reviews, finding log, SPDX SBOM | `docs/security` | External dependency/audit qualification |
 | 20 | Enforced local workload benchmark, defensive limits, empty CU/evidence gates | `tools/benchmark_local.py`, `benchmarks/local_workloads.cpp` | Measured CU, official multi-process qualification, and three testnet deployments |

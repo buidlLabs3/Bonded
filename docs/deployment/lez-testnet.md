@@ -96,14 +96,15 @@ account, or private execution proof. The three LP-0008 profiles remain separate:
 
 | Profile | Category | Remaining live prerequisite |
 |---|---|---|
-| Inbox | Messaging | Official Logos Messaging adapter, owner key, Core process |
-| Vault | Storage | Official Logos Storage adapter, owner key, Core process |
+| Inbox | Messaging | Live-qualified pinned Delivery binding, owner key, Core process |
+| Vault | Storage | Live-qualified pinned Storage binding, owner key, Core process |
 | Settlement | Blockchain | Shielded wallet/Core adapter, funded NPK/ISK account, real program calls |
 
 Each deployment needs its own shielded identity and data directory. Do not reuse
 a seed or commit credentials. The current official Logos wallet module lacks the
 required shielded LEZ API, so the repository intentionally does not manufacture
-fake profile evidence from its in-memory adapters.
+fake profile evidence from local test doubles or fail-closed wallet/program
+adapters.
 
 ## Verification Boundary
 

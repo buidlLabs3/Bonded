@@ -1,5 +1,6 @@
 #include "runtime/default_skill_catalog.h"
 #include "runtime/skill_runtime.h"
+#include "integrations/memory_adapters.h"
 #include "security/crypto.h"
 
 #include <iostream>
@@ -85,6 +86,50 @@ int main()
               "meta status skill failed");
         check(status.at("messaging_encryption_public_key").get<std::string>().size() == 64,
               "runtime status omitted the X25519 messaging key");
+
+        SkillRegistry injected_registry;
+        bonded::RuntimeAdapters adapters{
+            std::make_unique<bonded::MemoryMessagingAdapter>(),
+            std::make_unique<bonded::MemoryStorageAdapter>(),
+            std::make_unique<bonded::MemoryWalletAdapter>(25),
+            std::make_unique<bonded::MemoryProgramAdapter>(),
+            "logos-delivery-module",
+            "logos-storage-module",
+            "official-lez-wallet-pending-host-api",
+            "official-lez-wallet-pending-host-api"};
+        SkillRuntime injected_runtime(injected_registry, Profile::Settlement,
+                                      Json{{"network", "lez-testnet"}},
+                                      [](const Json&) {}, std::move(adapters));
+        injected_runtime.registerDefaultSkills();
+        const auto injected_status = injected_runtime.status();
+        check(injected_status.at("dependencies").at("messaging") ==
+                  "logos-delivery-module" &&
+                  injected_status.at("dependencies").at("storage") ==
+                      "logos-storage-module",
+              "runtime did not report injected official dependencies");
+        check(injected_status.at("dependencies").at("wallet") ==
+                  "official-lez-wallet-pending-host-api",
+              "runtime hid the official wallet host API gap");
+        check(injected_status.at("balance") == 25 &&
+                  injected_status.at("wallet_error").get<std::string>().empty(),
+              "available injected wallet was reported as unavailable");
+
+        SkillRegistry unavailable_registry;
+        bonded::RuntimeAdapters unavailable_adapters{
+            std::make_unique<bonded::MemoryMessagingAdapter>(),
+            std::make_unique<bonded::MemoryStorageAdapter>(),
+            std::make_unique<bonded::MemoryWalletAdapter>(0),
+            std::make_unique<bonded::MemoryProgramAdapter>(),
+            "logos-delivery-module",
+            "logos-storage-module",
+            "official-lez-wallet-host-api-unavailable",
+            "official-lez-program-host-api-unavailable"};
+        SkillRuntime unavailable_runtime(unavailable_registry, Profile::Vault,
+                                         Json{{"network", "lez-testnet"}},
+                                         [](const Json&) {},
+                                         std::move(unavailable_adapters));
+        check(unavailable_runtime.status().at("state") == "degraded",
+              "Vault hid the unavailable LEZ program dependency");
 
         std::cout << "PASS 21-skill runtime conformance\n";
         return 0;

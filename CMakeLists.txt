@@ -29,6 +29,7 @@ set(BONDED_SOURCES
     src/security/crypto.cpp
     src/storage/database.cpp
     src/integrations/memory_adapters.cpp
+    src/integrations/logos_adapters.cpp
     src/runtime/default_skill_catalog.cpp
     src/runtime/reliability.cpp
     src/runtime/skill_registry.cpp
@@ -74,6 +75,7 @@ if(BUILD_TESTING)
         src/domain/state_machine.cpp
         src/security/crypto.cpp
         src/integrations/memory_adapters.cpp
+        src/integrations/logos_adapters.cpp
         src/services/contact_rules.cpp
         src/services/messaging_service.cpp
         src/services/receipt_service.cpp
@@ -89,6 +91,7 @@ if(BUILD_TESTING)
         tests/test_second_half.cpp
         src/security/crypto.cpp
         src/integrations/memory_adapters.cpp
+        src/integrations/logos_adapters.cpp
         src/runtime/default_skill_catalog.cpp
         src/runtime/reliability.cpp
         src/runtime/skill_registry.cpp

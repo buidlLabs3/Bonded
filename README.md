@@ -17,10 +17,12 @@ task coordination, and exactly 21 profile-scoped default skills. It also ships
 an idempotent headless operations CLI, Basecamp QML assets, recovery primitives,
 a pinned RISC Zero LEZ settlement guest, and local conformance tests.
 
-The official Logos Messaging and Storage adapters, shielded LEZ wallet/runtime
+The production Core module now binds the exact pinned Logos Delivery and Storage
+module contracts; local suites also retain explicit memory test doubles. Live
+multi-process Delivery/Storage interoperability, the shielded LEZ wallet/runtime
 binding, live Basecamp replica, three agent-profile deployments, contract
 invocation proofs, CU measurements, and narrated video remain release gates.
-Local adapters are never represented as testnet evidence. See
+Local test-double results are never represented as testnet evidence. See
 `docs/known-limitations.md` and `docs/requirements/traceability.md` for the exact
 qualification state.
 

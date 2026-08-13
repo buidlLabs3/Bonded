@@ -16,3 +16,4 @@ __pycache__/
 *.profraw
 *.profdata
 compile_commands.json
+/evidence/testnet/candidates/

@@ -13,6 +13,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isrc \
     src/domain/state_machine.cpp \
     src/security/crypto.cpp \
     src/integrations/memory_adapters.cpp \
+    src/integrations/logos_adapters.cpp \
     src/services/contact_rules.cpp \
     src/services/messaging_service.cpp \
     src/services/receipt_service.cpp \

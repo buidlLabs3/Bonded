@@ -1,6 +1,6 @@
 #pragma once
 
-#include "integrations/memory_adapters.h"
+#include "integrations/interfaces.h"
 #include "runtime/skill_registry.h"
 #include "services/a2a_service.h"
 #include "services/configuration_service.h"
@@ -14,10 +14,26 @@
 
 namespace bonded {
 
+struct RuntimeAdapters {
+    std::unique_ptr<MessagingAdapter> messaging;
+    std::unique_ptr<StorageAdapter> storage;
+    std::unique_ptr<WalletAdapter> wallet;
+    std::unique_ptr<ProgramAdapter> program;
+    std::string messaging_name;
+    std::string storage_name;
+    std::string wallet_name;
+    std::string program_name;
+
+    static RuntimeAdapters memory(std::uint64_t initial_balance);
+};
+
 class SkillRuntime {
 public:
     SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
                  std::function<void(const Json&)> owner_action_required);
+    SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
+                 std::function<void(const Json&)> owner_action_required,
+                 RuntimeAdapters adapters);
 
     void registerDefaultSkills();
     Json status() const;
@@ -39,10 +55,14 @@ private:
     std::string storage_key_;
     std::function<void(const Json&)> owner_action_required_;
 
-    MemoryMessagingAdapter messaging_adapter_;
-    MemoryStorageAdapter storage_adapter_;
-    MemoryWalletAdapter wallet_adapter_;
-    MemoryProgramAdapter program_adapter_;
+    std::unique_ptr<MessagingAdapter> messaging_adapter_;
+    std::unique_ptr<StorageAdapter> storage_adapter_;
+    std::unique_ptr<WalletAdapter> wallet_adapter_;
+    std::unique_ptr<ProgramAdapter> program_adapter_;
+    std::string messaging_adapter_name_;
+    std::string storage_adapter_name_;
+    std::string wallet_adapter_name_;
+    std::string program_adapter_name_;
     MessagingService messaging_;
     StorageService storage_;
     SpendingController spending_;

@@ -11,8 +11,8 @@ python3 tools/benchmark_local.py \
   --output evidence/performance/local-$(date -u +%Y%m%dT%H%M%SZ).json
 ```
 
-The output is local-adapter qualification only, not LEZ performance or CU
-evidence. The current storage adapter accepts a complete in-memory object, so
+The output is local-test-adapter qualification only, not LEZ performance or CU
+evidence. The benchmark storage double accepts a complete in-memory object, so
 the attachment measurement is explicitly a bounded round-trip, not streaming.
 Official multi-process adapter, real-proof, and testnet receipt measurements
 remain separate release gates.

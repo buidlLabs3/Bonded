@@ -8,7 +8,7 @@
   "description": "Private bonded first-contact messaging agent runtime",
   "author": "buidlLabs3",
   "main": "bonded_inbox_plugin",
-  "dependencies": [],
+  "dependencies": ["delivery_module", "storage_module"],
   "capabilities": [],
   "nix": {
     "packages": {

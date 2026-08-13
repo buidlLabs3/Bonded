@@ -13,9 +13,9 @@ ephemeral X25519 public key, AES-256-GCM ciphertext/nonce/tag, Ed25519 public
 key, and signature. Each message derives a fresh context-bound encryption key
 with HKDF-SHA-256;
 the signature covers the sealed envelope. Receivers require the exact recipient
-identity and a pinned sender signing key before decryption. Logos Messaging
-provides delivery in a production adapter; the checked-in shared-memory bus is
-local two-instance protocol evidence only.
+identity and a pinned sender signing key before decryption. The production Core
+module maps this envelope through the pinned Logos Delivery generated client;
+the checked-in shared-memory bus is local two-instance protocol evidence only.
 
 Version 1 is rejected because it carried a signed plaintext payload. Peers
 discover the recipient X25519 public key in the signed Agent Card's

@@ -6,8 +6,8 @@ compatibility test and an ADR update.
 | Component | Revision | Integration decision |
 |---|---|---|
 | Logos Module Builder | `7fbb9420a3fe8ce03a140f0df84a0cc8463bc6dc` | Universal C++ module interface; Qt glue generated from the implementation header |
-| Logos Storage Module | `e0db835de379f47bae7fccc3032056d99af973bb` | Isolate behind `StorageAdapter`; upstream metadata version 2.1.0 |
-| Logos Delivery Module | `3f0f2d8b202f427a96179407bbf18b449935da7c` | Isolate behind `MessagingAdapter`; upstream metadata version 0.2.0 |
+| Logos Storage Module | `e0db835de379f47bae7fccc3032056d99af973bb` | Bound through the generated client behind `StorageAdapter`; upstream metadata version 2.1.0 |
+| Logos Delivery Module | `3f0f2d8b202f427a96179407bbf18b449935da7c` | Bound through the generated client behind `MessagingAdapter`; upstream metadata version 0.2.0 |
 | Logos Wallet Module | `f6f9c160410db824531f42dd8b27ccecd39ca589` | Not suitable for LEZ shielded accounts: current API is an explicitly WIP Ethereum transaction wrapper |
 | Logos Basecamp | `cee212ffa82187d05dc704d78c1184289e8fca1f` | Package UI as an `.lgx`; test with isolated `--user-dir` instances |
 | LEZ sequencer testnet v0.2.4 | `47eba256479f6f785acbd138834340703cd03401` | `https://testnet.lez.logos.co`; channel ID `0101010101010101010101010101010101010101010101010101010101010101`; `getBlock` is a base64 Borsh `Block` and exposes Pending/Safe/Finalized status |
@@ -28,6 +28,13 @@ repository for the initial implementation. The adapter must be replaced with a
 Core module call when an official shielded LEZ wallet module is published. This
 gap blocks a claim of final testnet conformance until the real adapter and proof
 path pass Chunk 20.
+
+Delivery and Storage are declared as exact flake/module dependencies. The Core
+context maps Delivery `send`, `subscribe`, and `messageReceived`, plus Storage
+`uploadUrl`, `downloadChunks`, cancellation, and completion events, into the
+runtime adapter interfaces. Storage list/share remain application-owned local
+metadata and encrypted grant operations. These bindings are compile- and
+unit-qualified; live Core interoperability remains a separate evidence gate.
 
 ## Upgrade Policy
 

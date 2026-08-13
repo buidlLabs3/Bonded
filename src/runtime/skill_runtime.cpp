@@ -1,6 +1,7 @@
 #include "runtime/skill_runtime.h"
 
 #include "runtime/default_skill_catalog.h"
+#include "integrations/memory_adapters.h"
 #include "security/crypto.h"
 
 #include <algorithm>
@@ -22,23 +23,61 @@ std::vector<std::string> members(const Json& input)
     return input.at("members").get<std::vector<std::string>>();
 }
 
+template <typename Adapter>
+Adapter& requireAdapter(const std::unique_ptr<Adapter>& adapter, const char* name)
+{
+    if (!adapter) {
+        throw DomainError(std::string(name) + " runtime adapter is required");
+    }
+    return *adapter;
+}
+
 } // namespace
+
+RuntimeAdapters RuntimeAdapters::memory(std::uint64_t initial_balance)
+{
+    return {std::make_unique<MemoryMessagingAdapter>(),
+            std::make_unique<MemoryStorageAdapter>(),
+            std::make_unique<MemoryWalletAdapter>(initial_balance),
+            std::make_unique<MemoryProgramAdapter>(),
+            "memory-test-double",
+            "memory-test-double",
+            "memory-test-double",
+            "memory-test-double"};
+}
 
 SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
                            std::function<void(const Json&)> owner_action_required)
+    : SkillRuntime(registry, profile, configuration, std::move(owner_action_required),
+                   RuntimeAdapters::memory(
+                       configuration.value("initial_balance", std::uint64_t{1000})))
+{
+}
+
+SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
+                           std::function<void(const Json&)> owner_action_required,
+                           RuntimeAdapters adapters)
     : registry_(registry), profile_(profile),
       network_(configuration.value("network", "logos-local")),
       storage_key_(Crypto::randomHex(32)),
       owner_action_required_(std::move(owner_action_required)),
-      wallet_adapter_(configuration.value("initial_balance", std::uint64_t{1000})),
-      messaging_(messaging_adapter_, network_), storage_(storage_adapter_),
-      spending_(wallet_adapter_,
+      messaging_adapter_(std::move(adapters.messaging)),
+      storage_adapter_(std::move(adapters.storage)),
+      wallet_adapter_(std::move(adapters.wallet)),
+      program_adapter_(std::move(adapters.program)),
+      messaging_adapter_name_(std::move(adapters.messaging_name)),
+      storage_adapter_name_(std::move(adapters.storage_name)),
+      wallet_adapter_name_(std::move(adapters.wallet_name)),
+      program_adapter_name_(std::move(adapters.program_name)),
+      messaging_(requireAdapter(messaging_adapter_, "messaging"), network_),
+      storage_(requireAdapter(storage_adapter_, "storage")),
+      spending_(requireAdapter(wallet_adapter_, "wallet"),
                 SpendingPolicy{configuration.value("per_transaction_limit", std::uint64_t{100}),
                                configuration.value("per_period_limit", std::uint64_t{500}),
                                configuration.value("period_seconds", std::uint64_t{86400}),
                                configuration.value("approval_timeout_seconds",
                                                    std::uint64_t{3600})}),
-      a2a_(program_adapter_, network_),
+      a2a_(requireAdapter(program_adapter_, "program"), network_),
       configuration_(Json{{"classifier_enabled", configuration.value("classifier_enabled", true)},
                           {"rate_limit", configuration.value("rate_limit", std::uint64_t{10})},
                           {"owner_notifications",
@@ -144,14 +183,14 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
         return Json{{"message_id", messaging_.send(envelope, now)}};
     }
     if (name == "messaging.join") {
-        messaging_adapter_.join(input.at("group_id").get<std::string>());
+        messaging_adapter_->join(input.at("group_id").get<std::string>());
         return Json{{"joined", true}};
     }
     if (name == "messaging.create_group") {
-        return Json{{"group_id", messaging_adapter_.createGroup(members(input))}};
+        return Json{{"group_id", messaging_adapter_->createGroup(members(input))}};
     }
     if (name == "wallet.balance") {
-        return Json{{"balance", wallet_adapter_.balance()}, {"asset", "LEZ"}};
+        return Json{{"balance", wallet_adapter_->balance()}, {"asset", "LEZ"}};
     }
     if (name == "wallet.send") {
         const auto proposal = spending_.propose(input.at("recipient").get<std::string>(),
@@ -166,7 +205,7 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
     }
     if (name == "wallet.history") {
         Json history = Json::array();
-        for (const auto& transfer : wallet_adapter_.history()) {
+        for (const auto& transfer : wallet_adapter_->history()) {
             history.push_back(Json{{"id", transfer.id},
                                    {"recipient", transfer.recipient},
                                    {"amount", transfer.amount},
@@ -175,18 +214,18 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
         return history;
     }
     if (name == "program.query") {
-        return program_adapter_.query(input.at("program_id").get<std::string>(),
+        return program_adapter_->query(input.at("program_id").get<std::string>(),
                                       input.value("parameters", Json::object()));
     }
     if (name == "program.call") {
-        return Json{{"call_id", program_adapter_.call(
+        return Json{{"call_id", program_adapter_->call(
                                     input.at("program_id").get<std::string>(),
                                     input.at("instruction").get<std::string>(),
                                     input.value("parameters", Json::object()))}};
     }
     if (name == "program.deploy") {
         return Json{{"program_id",
-                     program_adapter_.deploy(input.at("binary_path").get<std::string>())}};
+                     program_adapter_->deploy(input.at("binary_path").get<std::string>())}};
     }
     if (name == "agent.card") {
         const auto now = input.value("now_unix", std::uint64_t{0});
@@ -255,18 +294,36 @@ Json SkillRuntime::status() const
     for (const auto& entry : storage_.list()) {
         storage_bytes += entry.plaintext_bytes;
     }
-    return Json{{"state", "ready"},
+    Json balance = nullptr;
+    std::string wallet_error;
+    const auto wallet_required = profile_ == Profile::Settlement;
+    if (wallet_required) {
+        try {
+            balance = wallet_adapter_->balance();
+        } catch (const std::exception& error) {
+            wallet_error = error.what();
+        }
+    }
+    const auto program_unavailable =
+        program_adapter_name_ == "official-lez-program-host-api-unavailable";
+    const auto program_required = profile_ != Profile::Inbox;
+    const auto degraded = (wallet_required && !wallet_error.empty()) ||
+                          (program_required && program_unavailable);
+    return Json{{"state", degraded ? "degraded" : "ready"},
                 {"profile", toString(profile_)},
                 {"agent_id", agent_id_},
                 {"messaging_encryption_public_key", encryption_public_key_},
-                {"balance", wallet_adapter_.balance()},
+                {"balance", balance},
+                {"wallet_error", wallet_error},
+                {"program_error",
+                 program_unavailable ? "official LEZ program host API is unavailable" : ""},
                 {"storage_bytes", storage_bytes},
                 {"active_tasks", a2a_.activeTaskCount()},
                 {"configuration", configuration_.snapshot()},
-                {"dependencies", Json{{"messaging", "local-adapter"},
-                                       {"storage", "local-adapter"},
-                                       {"wallet", "local-adapter"},
-                                       {"program", "local-adapter"}}}};
+                {"dependencies", Json{{"messaging", messaging_adapter_name_},
+                                       {"storage", storage_adapter_name_},
+                                       {"wallet", wallet_adapter_name_},
+                                       {"program", program_adapter_name_}}}};
 }
 
 } // namespace bonded

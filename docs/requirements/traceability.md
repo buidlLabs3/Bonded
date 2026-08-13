@@ -4,18 +4,19 @@ Status values are `planned`, `implemented`, `verified-local`, and
 `verified-testnet`. No item is complete for submission before its evidence link
 exists.
 
-`verified-local` means checked against in-process adapters or static assets; it
-does not imply an official upstream integration, LEZ proof, or testnet result.
+`verified-local` means checked through local tests, a pinned module build, or
+static assets. It does not imply live upstream interoperability, an LEZ proof,
+or a testnet result.
 
 | ID | Requirement | Chunk | Verification | Status |
 |---|---|---:|---|---|
 | CORE-01 | Load beside wallet, storage, and messaging without upstream changes | 01, 04 | `nix build .#lib`, `nix build .#lgx` | verified-local |
 | CORE-02 | Independent shielded NPK/ISK identity and funds | 04, 08 | LEZ integration/testnet evidence | planned |
 | CORE-03 | Single-command headless deployment | 15 | `tests/test_cli.py` deploy/idempotency/restore | verified-local |
-| CORE-04 | Encrypted owner channel from separate app | 06, 16 | Two `MessagingService` instances verify X25519/AES-GCM sealing, pinned Ed25519 identity, no wire plaintext, and replay rejection; official Logos transport remains pending | verified-local |
+| CORE-04 | Encrypted owner channel from separate app | 06, 16 | Two `MessagingService` instances verify X25519/AES-GCM sealing, pinned Ed25519 identity, no wire plaintext, and replay rejection; the pinned Delivery client is bound, while live two-process transport remains pending | verified-local |
 | CORE-05 | Per-transaction and period spending approval | 08 | `tests/test_services.cpp` spending cases | verified-local |
-| SK-STO | `upload`, `download`, `list`, `share` | 07 | service and 21-skill runtime suites | verified-local |
-| SK-MSG | `send`, `join`, `create_group` | 06 | service and 21-skill runtime suites | verified-local |
+| SK-STO | `upload`, `download`, `list`, `share` | 07 | generated Storage client binding covers upload/download; local encrypted metadata/grant cases cover list/share; adapter suite, 21-skill suite, and `nix build .#lib` | verified-local |
+| SK-MSG | `send`, `join`, `create_group` | 06 | generated Delivery client binding, send/subscribe/event adapter cases, 21-skill suite, and `nix build .#lib` | verified-local |
 | SK-BC | `balance`, `send`, `history`, `query`, `call`, `deploy` | 08 | adapter and 21-skill runtime suites | verified-local |
 | SK-A2A | `card`, `discover`, `task`, `subscribe`, `cancel` | 13 | `tests/test_second_half.cpp`, runtime suite | verified-local |
 | SK-META | `skills`, `status`, `configure` | 14 | catalog union, signed configure tests | verified-local |

@@ -1,7 +1,10 @@
 #pragma once
 
 #include <exception>
+#include <filesystem>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "logos_module_context.h"
@@ -9,6 +12,7 @@
 #include "runtime/skill_runtime.h"
 #include "services/bond_service.h"
 #include "services/inbox_service.h"
+#include "integrations/logos_adapters.h"
 #include "storage/database.h"
 
 class BondedInboxImpl : public LogosModuleContext {
@@ -29,6 +33,9 @@ logos_events:
 private:
     void requireInitialized() const;
     void registerSkills();
+    std::string startStorageUpload(const std::string& payload);
+    void cancelStorageUpload(const std::string& session);
+    void cleanupStorageUpload(const std::string& session);
     std::string failure(const std::exception& error) const;
 
     std::string data_directory_;
@@ -38,4 +45,10 @@ private:
     std::unique_ptr<bonded::InboxService> inbox_;
     std::unique_ptr<bonded::SkillRegistry> skills_;
     std::unique_ptr<bonded::SkillRuntime> skill_runtime_;
+    bonded::LogosMessagingAdapter* active_logos_messaging_{nullptr};
+    bonded::LogosStorageAdapter* active_logos_storage_{nullptr};
+    std::recursive_mutex adapter_events_mutex_;
+    std::mutex storage_uploads_mutex_;
+    std::map<std::string, std::filesystem::path> storage_uploads_;
+    bool context_ready_{false};
 };

@@ -1,4 +1,5 @@
 #include "integrations/memory_adapters.h"
+#include "integrations/logos_adapters.h"
 #include "security/crypto.h"
 #include "services/contact_rules.h"
 #include "services/messaging_service.h"
@@ -7,9 +8,13 @@
 #include "services/storage_service.h"
 
 #include <functional>
+#include <chrono>
+#include <condition_variable>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -19,6 +24,8 @@ using bonded::ContactRules;
 using bonded::Crypto;
 using bonded::DomainError;
 using bonded::Json;
+using bonded::LogosMessagingAdapter;
+using bonded::LogosStorageAdapter;
 using bonded::MemoryMessagingAdapter;
 using bonded::MemoryProgramAdapter;
 using bonded::MemoryStorageAdapter;
@@ -170,6 +177,263 @@ void testStorage()
                       "wrong storage key decrypted data");
 }
 
+void testLogosMessagingAdapter()
+{
+    std::vector<std::string> subscriptions;
+    std::string sent_topic;
+    std::string sent_payload;
+    LogosMessagingAdapter adapter(
+        [&](const std::string& topic, const std::string& payload) {
+            sent_topic = topic;
+            sent_payload = payload;
+            return "delivery-request-1";
+        },
+        [&](const std::string& topic) { subscriptions.push_back(topic); });
+
+    check(adapter.send("bonded/private", "sealed") == "delivery-request-1" &&
+              sent_topic == "bonded/private" && sent_payload == "sealed",
+          "Logos Delivery send callback was not used");
+    std::string received;
+    adapter.subscribe("bonded/private", [&](const auto& payload) { received = payload; });
+    adapter.subscribe("bonded/private", [&](const auto&) {});
+    check(subscriptions.size() == 1 && subscriptions.front() == "bonded/private",
+          "Logos Delivery topic was subscribed more than once");
+    adapter.receive("bonded/private", "sealed-reply");
+    check(received == "sealed-reply", "Logos Delivery event was not dispatched");
+
+    const auto first_group = adapter.createGroup({"owner", "inbox", "owner"});
+    const auto second_group = adapter.createGroup({"inbox", "owner"});
+    check(first_group == second_group && first_group.size() == 32,
+          "Logos Delivery group topic was not deterministic");
+    check(subscriptions.back() == "bonded/group/" + first_group,
+          "Logos Delivery group did not subscribe to its derived topic");
+
+    std::size_t attempts = 0;
+    LogosMessagingAdapter retrying(
+        [](const std::string&, const std::string&) { return "request"; },
+        [&](const std::string&) {
+            if (++attempts == 1) {
+                throw DomainError("subscription unavailable");
+            }
+        });
+    expectDomainError([&] { retrying.subscribe("retry/topic", [](const auto&) {}); },
+                      "failed Logos Delivery subscription did not fail closed");
+    retrying.subscribe("retry/topic", [](const auto&) {});
+    check(attempts == 2, "failed Logos Delivery subscription was not retried");
+
+    std::mutex subscribe_mutex;
+    std::condition_variable subscribe_changed;
+    bool release_first = false;
+    std::size_t concurrent_attempts = 0;
+    LogosMessagingAdapter concurrent(
+        [](const std::string&, const std::string&) { return "request"; },
+        [&](const std::string&) {
+            std::unique_lock lock(subscribe_mutex);
+            if (++concurrent_attempts == 1) {
+                subscribe_changed.notify_all();
+                subscribe_changed.wait(lock, [&] { return release_first; });
+                throw DomainError("first concurrent subscription failed");
+            }
+        });
+    bool first_failed = false;
+    bool second_succeeded = false;
+    std::thread first([&] {
+        try {
+            concurrent.subscribe("concurrent/topic", [](const auto&) {});
+        } catch (const DomainError&) {
+            first_failed = true;
+        }
+    });
+    {
+        std::unique_lock lock(subscribe_mutex);
+        subscribe_changed.wait(lock, [&] { return concurrent_attempts == 1; });
+    }
+    std::thread second([&] {
+        concurrent.subscribe("concurrent/topic", [](const auto&) {});
+        second_succeeded = true;
+    });
+    {
+        std::lock_guard lock(subscribe_mutex);
+        release_first = true;
+    }
+    subscribe_changed.notify_all();
+    first.join();
+    second.join();
+    check(first_failed && second_succeeded && concurrent_attempts == 2,
+          "concurrent Logos Delivery subscription did not fail and retry safely");
+
+    bool healthy_handler_ran = false;
+    concurrent.subscribe("handler/topic", [](const auto&) {
+        throw DomainError("handler failed");
+    });
+    concurrent.subscribe("handler/topic", [&](const auto&) { healthy_handler_ran = true; });
+    expectDomainError([&] { concurrent.receive("handler/topic", "sealed"); },
+                      "failing Delivery handler was hidden");
+    check(healthy_handler_ran, "failing Delivery handler blocked later handlers");
+}
+
+void testLogosStorageAdapter()
+{
+    LogosStorageAdapter* bridge = nullptr;
+    std::thread upload_event;
+    std::thread download_event;
+    LogosStorageAdapter adapter(
+        [&](const std::string& payload) {
+            check(payload == "ciphertext", "Logos Storage upload payload changed");
+            upload_event = std::thread([&] {
+                bridge->uploadDone(
+                    R"({"success":true,"sessionId":"upload-1","cid":"cid-1"})");
+            });
+            return "upload-1";
+        },
+        [&](const std::string& cid) {
+            check(cid == "cid-1", "Logos Storage download CID changed");
+            download_event = std::thread([&] {
+                bridge->downloadProgress(
+                    R"({"success":true,"sessionId":"cid-1","chunk":"Y2lwaGVy"})");
+                bridge->downloadProgress(
+                    R"({"success":true,"sessionId":"cid-1","chunk":"dGV4dA=="})");
+                bridge->downloadDone(R"({"success":true,"sessionId":"cid-1"})");
+            });
+            return cid;
+        },
+        [](const std::string&) {}, [](const std::string&) {},
+        [](const std::string&) {}, std::chrono::seconds(1));
+    bridge = &adapter;
+
+    check(adapter.put("ciphertext") == "cid-1", "Logos Storage upload did not return CID");
+    upload_event.join();
+    check(adapter.get("cid-1") == "ciphertext",
+          "Logos Storage download chunks did not round trip");
+    download_event.join();
+
+    LogosStorageAdapter* immediate_bridge = nullptr;
+    LogosStorageAdapter immediate_adapter(
+        [&](const std::string&) {
+            immediate_bridge->uploadDone(
+                R"({"success":true,"sessionId":"immediate","cid":"cid-now"})");
+            return "immediate";
+        },
+        [](const std::string& cid) { return cid; }, [](const std::string&) {},
+        [](const std::string&) {}, [](const std::string&) {}, std::chrono::seconds(1));
+    immediate_bridge = &immediate_adapter;
+    check(immediate_adapter.put("ciphertext") == "cid-now",
+          "Logos Storage lost an immediate completion event");
+
+    std::string cancelled;
+    LogosStorageAdapter timeout_adapter(
+        [](const std::string&) { return "slow-upload"; },
+        [](const std::string& cid) { return cid; },
+        [&](const std::string& session) { cancelled = session; },
+        [](const std::string&) {}, [](const std::string&) {},
+        std::chrono::milliseconds(5));
+    expectDomainError([&] { timeout_adapter.put("ciphertext"); },
+                      "Logos Storage timeout did not fail closed");
+    check(cancelled == "slow-upload", "Logos Storage timeout did not cancel its session");
+
+    expectDomainError([&] { adapter.uploadDone("not-json"); },
+                      "malformed Logos Storage event was accepted");
+    expectDomainError(
+        [&] { adapter.uploadDone(R"({"success":"yes","sessionId":"typed"})"); },
+        "wrong-typed Logos Storage success was accepted");
+    expectDomainError(
+        [&] {
+            adapter.downloadProgress(
+                R"({"success":true,"sessionId":"typed","chunk":42})");
+        },
+        "wrong-typed Logos Storage chunk was accepted");
+    expectDomainError(
+        [&] {
+            adapter.downloadProgress(
+                R"({"success":true,"sessionId":"malformed","chunk":"%%%="})");
+        },
+        "invalid Logos Storage base64 was accepted");
+    expectDomainError(
+        [&] {
+            adapter.downloadProgress(
+                R"({"success":true,"sessionId":"malformed","chunk":"Zh=="})");
+        },
+        "non-canonical Logos Storage base64 was accepted");
+
+    LogosStorageAdapter* orphan_bridge = nullptr;
+    bool first_upload = true;
+    LogosStorageAdapter orphan_adapter(
+        [&](const std::string&) {
+            if (first_upload) {
+                first_upload = false;
+                orphan_bridge->uploadDone(
+                    R"({"success":true,"sessionId":"reused","cid":"stale"})");
+                throw DomainError("upload start failed");
+            }
+            orphan_bridge->uploadDone(
+                R"({"success":true,"sessionId":"reused","cid":"fresh"})");
+            return "reused";
+        },
+        [](const std::string& cid) { return cid; }, [](const std::string&) {},
+        [](const std::string&) {}, [](const std::string&) {}, std::chrono::seconds(1));
+    orphan_bridge = &orphan_adapter;
+    expectDomainError([&] { orphan_adapter.put("ciphertext"); },
+                      "failed upload start was accepted");
+    check(orphan_adapter.put("ciphertext") == "fresh",
+          "failed upload start left a reusable completion event");
+
+    std::mutex duplicate_mutex;
+    std::condition_variable duplicate_changed;
+    std::size_t duplicate_started = 0;
+    LogosStorageAdapter duplicate_adapter(
+        [&](const std::string&) {
+            std::unique_lock lock(duplicate_mutex);
+            ++duplicate_started;
+            duplicate_changed.notify_all();
+            duplicate_changed.wait(lock, [&] { return duplicate_started == 2; });
+            return "duplicate";
+        },
+        [](const std::string& cid) { return cid; }, [](const std::string&) {},
+        [](const std::string&) {}, [](const std::string&) {}, std::chrono::seconds(1));
+    std::size_t duplicate_failures = 0;
+    auto duplicate_put = [&] {
+        try {
+            static_cast<void>(duplicate_adapter.put("ciphertext"));
+        } catch (const DomainError&) {
+            std::lock_guard lock(duplicate_mutex);
+            ++duplicate_failures;
+        }
+    };
+    std::thread duplicate_first(duplicate_put);
+    std::thread duplicate_second(duplicate_put);
+    duplicate_first.join();
+    duplicate_second.join();
+    check(duplicate_failures == 2,
+          "duplicate Logos Storage session did not fail both operations");
+
+    LogosStorageAdapter* oversized_bridge = nullptr;
+    std::string oversized_cancelled;
+    std::thread oversized_event;
+    LogosStorageAdapter oversized_adapter(
+        [](const std::string&) { return "unused"; },
+        [&](const std::string&) {
+            oversized_event = std::thread([&] {
+                std::string chunk(5592407, 'A');
+                chunk += '=';
+                oversized_bridge->downloadProgress(
+                    Json{{"success", true},
+                         {"sessionId", "oversized"},
+                         {"chunk", chunk}}
+                        .dump());
+            });
+            return "oversized";
+        },
+        [](const std::string&) {},
+        [&](const std::string& session) { oversized_cancelled = session; },
+        [](const std::string&) {}, std::chrono::seconds(2));
+    oversized_bridge = &oversized_adapter;
+    expectDomainError([&] { oversized_adapter.get("cid-oversized"); },
+                      "oversized Logos Storage download was accepted");
+    oversized_event.join();
+    check(oversized_cancelled == "oversized",
+          "oversized Logos Storage download was not cancelled");
+}
+
 void testSpending()
 {
     MemoryWalletAdapter wallet(1000);
@@ -245,6 +509,8 @@ int main()
 {
     const std::vector<std::pair<std::string, std::function<void()>>> tests{
         {"messaging", testMessaging}, {"storage", testStorage},
+        {"logos messaging adapter", testLogosMessagingAdapter},
+        {"logos storage adapter", testLogosStorageAdapter},
         {"spending", testSpending},   {"receipt", testReceipt},
         {"contact rules", testContactRules}, {"program adapter", testProgramAdapter},
     };

@@ -3,8 +3,12 @@
 - The official explorer's indexer is server-side and has no discovered public
   status/RPC endpoint. The verifier measures freshness by comparing its latest
   finalized blocks with sequencer blocks at the same heights.
-- The checked-in Messaging, Storage, wallet, and program adapters are in-memory
-  test doubles. Official upstream adapters are not yet bound.
+- The production Core module binds the exact pinned Logos Delivery and Storage
+  generated clients. Their adapter logic and module build pass locally, but live
+  multi-process interoperability and fault-injection evidence are not collected.
+  Local suites continue to use explicitly labelled memory test doubles.
+- The production wallet and program skill adapters fail closed because Logos
+  Core does not expose the required shielded LEZ wallet/program host API.
 - The official Logos wallet module currently exposes a work-in-progress Ethereum
   API, not the required shielded LEZ NPK/ISK surface.
 - The historical program deployment now passes its required explorer-evidence

@@ -182,6 +182,32 @@ new release-path submission or program call.
 Chunks in the same wave may run in parallel only after their shared dependencies
 and interface contracts are complete.
 
+## Execution Status (2026-08-13)
+
+The authoritative requirement-level status remains
+`docs/requirements/traceability.md`. This summary records the current execution
+boundary without weakening any chunk exit criterion:
+
+- Chunks 00-19 and 21-22 have their local implementation/checkpoint artifacts;
+  their live upstream, testnet, performance, video, release, and submission gates
+  remain open wherever the traceability matrix says `implemented` or `planned`.
+- Chunks 06-07 now bind the exact pinned Logos Delivery and Storage generated
+  clients in the production Core context. Adapter tests and the pinned module
+  build qualify the local boundary; live multi-process interoperability and
+  fault injection remain required.
+- Chunk 20A and the canonical settlement publication part of 20C are reconciled.
+  Chunk 20B standalone wallet qualification is 4/5 while the real private-proof
+  case runs with `RISC0_DEV_MODE=0`.
+- Chunk 20E registration evidence passes for sender and owner. Sink registration
+  is submitted as transaction
+  `2f1df54d2658dc6ee45ae3eaac43902fcf548462cba7ff6599ca0670abc759ac`
+  but remains pending until sequencer finality plus both public-explorer
+  observations and captures pass the evidence gate.
+- Funding, the full Chunk 20D lifecycle matrix, profile/use-case transactions,
+  CU measurements, three live profile deployments, independent release audit,
+  narrated video, tag, and submission remain open. No submission pull request
+  may be created without explicit owner instruction.
+
 ---
 
 ## Chunk 00 - Upstream Reconnaissance and Acceptance Freeze

@@ -2,6 +2,10 @@
 
 Date: 2026-08-11
 
+Historical note: the pinned Delivery and Storage module bindings listed below as
+open were implemented after this checkpoint. Current status is authoritative in
+`traceability.md`.
+
 This checkpoint records what is implemented and what remains blocked on real
 upstream/testnet integration. It is not a claim that Chunks 00-11 satisfy their
 final testnet exit criteria.
@@ -39,8 +43,9 @@ final testnet exit criteria.
 
 - The official `logos-wallet-module` revision inspected in Chunk 00 exposes a
   WIP Ethereum API, not the shielded LEZ NPK/ISK API required by LP-0008.
-- Messaging and Storage behavior is verified behind adapters, but the actual
-  pinned Logos modules must replace the deterministic memory adapters.
+- Resolved after this checkpoint: the production Core context now binds the
+  pinned Delivery and Storage generated clients. Live multi-process
+  interoperability remains a release gate.
 - The Rust bond core must be wrapped in the pinned LEZ program ABI, deployed,
   and executed against a standalone sequencer with `RISC0_DEV_MODE=0`.
 - Pending bonds are locally represented; chain reconciliation and confirmation
