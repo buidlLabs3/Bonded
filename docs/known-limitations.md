@@ -28,8 +28,11 @@
   is finalized in block 4568 and also passes the paired public-explorer evidence
   gate. The sink-registration transaction
   `2f1df54d2658dc6ee45ae3eaac43902fcf548462cba7ff6599ca0670abc759ac`
-  is finalized in block 4891 and passes the same gate. Sender funding and bond
-  transactions remain pending and must be validated separately.
+  is finalized in block 4891 and passes the same gate. Sender funding transaction
+  `05fb87d3eda87fad090eafd1b5cff7b001faf8df594eb81ba74ee00e5e4f9b15`
+  is finalized in block 5661, passes the gate, and reconciles an exact 150-unit
+  sender credit. Bond lifecycle and use-case transactions remain pending and
+  must be validated separately.
 - The real LEZ guest and program-deployment path do not yet provide a wallet/Core
   invocation adapter or an end-to-end bond execution proof.
 - Agent-profile deployments, bond invocation proofs, and CU measurements have

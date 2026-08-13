@@ -198,15 +198,20 @@ boundary without weakening any chunk exit criterion:
 - Chunk 20A and the canonical settlement publication part of 20C are reconciled.
   Chunk 20B standalone wallet qualification is 4/5 while the real private-proof
   case runs with `RISC0_DEV_MODE=0`.
-- Chunk 20E registration evidence passes for sender, owner, and sink. Sink
+- Chunk 20E wallet provisioning evidence passes for sender, owner, sink, and
+  sender funding. Sink
   transaction
   `2f1df54d2658dc6ee45ae3eaac43902fcf548462cba7ff6599ca0670abc759ac`
   is finalized in block 4891 and has two public-explorer observations separated
-  by six finalized blocks plus paired fresh-browser captures.
-- Funding, the full Chunk 20D lifecycle matrix, profile/use-case transactions,
-  CU measurements, three live profile deployments, independent release audit,
-  narrated video, tag, and submission remain open. No submission pull request
-  may be created without explicit owner instruction.
+  by six finalized blocks plus paired fresh-browser captures. Funding transaction
+  `05fb87d3eda87fad090eafd1b5cff7b001faf8df594eb81ba74ee00e5e4f9b15`
+  is finalized in block 5661, reconciles an exact 150-unit sender credit, and has
+  paired explorer captures and separated machine observations.
+- The eight Chunk 20D lifecycle rows and three Chunk 20E spending/paid-task rows
+  remain open (11 of 16 inventory rows). CU measurements, three live profile
+  deployments, the independent release audit, narrated video, tag, and
+  submission also remain open. No submission pull request may be created
+  without explicit owner instruction.
 
 ---
 
