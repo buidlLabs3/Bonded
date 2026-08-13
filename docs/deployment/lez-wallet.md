@@ -74,13 +74,16 @@ reconciliation, promote the exact journaled hash through the public explorer:
 ```bash
 python3 tools/lez_bond_evidence.py \
   --candidate evidence/testnet/candidates/acceptance-initialize.json \
+  --deployment evidence/testnet/deployment/settlement-program-v2-primary.json \
   --operation acceptance-initialize \
   --verifier-commit "$(git rev-parse HEAD)" \
   --observer primary \
   --evidence evidence/testnet/lifecycle/acceptance-initialize.json
 ```
 
-The helper requires the canonical deployment's program and binary, checks the
+The corrected v2 deployment is also the helper's fail-closed default. The
+explicit argument above makes that release binding visible in audit logs. The
+helper requires the canonical deployment's program and binary, checks the
 operation/outcome account shape, compares the finalized hash and block back to
 the lifecycle journal, and creates the observation immutably. Use a distinct
 observer and output path for the later independent observation.

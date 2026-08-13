@@ -18,6 +18,14 @@ SPEC.loader.exec_module(evidence)
 
 
 class BondEvidenceTests(unittest.TestCase):
+    def test_default_deployment_is_the_corrected_canonical_release(self):
+        self.assertEqual(
+            evidence.DEFAULT_DEPLOYMENT,
+            REPO / "evidence/testnet/deployment/settlement-program-v2-primary.json",
+        )
+        deployment = json.loads(evidence.DEFAULT_DEPLOYMENT.read_text(encoding="utf-8"))
+        self.assertEqual(deployment["program_id"], evidence.lez_bond.CANONICAL_PROGRAM_ID)
+
     def fixture(self, root: Path, inventory_operation="acceptance-initialize"):
         operation, outcome = evidence.OPERATIONS[inventory_operation]
         accounts = {

@@ -12,7 +12,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DEPLOYMENT = REPO_ROOT / "evidence/testnet/settlement-program.json"
+DEFAULT_DEPLOYMENT = (
+    REPO_ROOT / "evidence/testnet/deployment/settlement-program-v2-primary.json"
+)
 
 
 def _load_tool(name: str):
