@@ -319,6 +319,21 @@ must contain official explorer transaction and finalized block URLs. Failed
 wallet/sequencer submissions and locally computed hashes never count as
 successful transactions.
 
+The standalone runner sets the prover backend and Rayon thread count explicitly
+instead of inheriting a hidden remote-prover configuration. Both settings are
+bound to the resumable artifact, so changing either requires a fresh
+qualification. The local IPC prover is the stable default; increase the thread
+count only after checking available memory, and keep the proof in an
+operator-owned long-running service because interruption does not checkpoint
+RISC Zero 3.0.5 work:
+
+```bash
+RISC0_DEV_MODE=0 BONDED_LEZ_STANDALONE=YES \
+BONDED_LEZ_SOURCE="$BONDED_LEZ_SOURCE" \
+scripts/qualify-lez-wallet-standalone.sh \
+  --prover ipc --rayon-threads 4 --timeout 43200 --fresh
+```
+
 Fresh-browser supporting evidence is captured with
 `tools/lez_explorer_capture.mjs`. It accepts only exact official transaction and
 block URLs, uses a new temporary Chrome profile, asserts rendered identifiers,

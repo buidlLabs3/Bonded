@@ -18,6 +18,8 @@ SPEC.loader.exec_module(standalone)
 
 
 class StandaloneQualificationTests(unittest.TestCase):
+    EXECUTION = {"risc0_prover": "ipc", "rayon_num_threads": 1}
+
     def test_commands_are_exact_locked_release_single_test_runs(self):
         for test in standalone.TESTS:
             command = standalone._command(test)
@@ -72,16 +74,32 @@ class StandaloneQualificationTests(unittest.TestCase):
         result = {"id": standalone.TESTS[0]["id"], "status": "passed"}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "evidence.json"
-            artifact = standalone._artifact(profile, provenance, [result])
+            artifact = standalone._artifact(
+                profile, provenance, [result], self.EXECUTION
+            )
             path.write_text(json.dumps(artifact), encoding="utf-8")
             self.assertEqual(
-                standalone._resume_results(path, profile, provenance), [result]
+                standalone._resume_results(
+                    path, profile, provenance, self.EXECUTION
+                ),
+                [result],
             )
+            with self.assertRaisesRegex(
+                standalone.StandaloneQualificationError, "does not match"
+            ):
+                standalone._resume_results(
+                    path,
+                    profile,
+                    provenance,
+                    {"risc0_prover": "actor", "rayon_num_threads": 1},
+                )
             provenance["binary_size"] += 1
             with self.assertRaisesRegex(
                 standalone.StandaloneQualificationError, "does not match"
             ):
-                standalone._resume_results(path, profile, provenance)
+                standalone._resume_results(
+                    path, profile, provenance, self.EXECUTION
+                )
 
     def test_partial_and_complete_statuses_are_explicit(self):
         profile = {
@@ -95,15 +113,32 @@ class StandaloneQualificationTests(unittest.TestCase):
             "binary_size": 123,
         }
         partial = standalone._artifact(
-            profile, provenance, [{"id": standalone.TESTS[0]["id"]}]
+            profile,
+            provenance,
+            [{"id": standalone.TESTS[0]["id"]}],
+            self.EXECUTION,
         )
         self.assertEqual(partial["status"], "qualification-in-progress")
         complete = standalone._artifact(
             profile,
             provenance,
             [{"id": test["id"]} for test in standalone.TESTS],
+            self.EXECUTION,
         )
         self.assertEqual(complete["status"], "verified-standalone-real-proof")
+        self.assertEqual(complete["execution"], self.EXECUTION)
+
+    def test_execution_profile_requires_positive_explicit_local_settings(self):
+        args = mock.Mock(prover="ipc", rayon_threads=4)
+        self.assertEqual(
+            standalone._execution_profile(args),
+            {"risc0_prover": "ipc", "rayon_num_threads": 4},
+        )
+        args.rayon_threads = 0
+        with self.assertRaisesRegex(
+            standalone.StandaloneQualificationError, "positive"
+        ):
+            standalone._execution_profile(args)
 
     def test_qualification_requires_two_gates_and_real_proof_mode(self):
         args = mock.Mock(run=False)

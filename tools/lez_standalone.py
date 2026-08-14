@@ -224,11 +224,13 @@ def _terminate_process_group(process: subprocess.Popen) -> None:
         process.wait()
 
 
-def run_test(source: Path, test: dict, timeout: float) -> dict:
+def run_test(source: Path, test: dict, timeout: float, execution: dict) -> dict:
     environment = os.environ.copy()
     environment.update(
         {
             "RISC0_DEV_MODE": "0",
+            "RISC0_PROVER": execution["risc0_prover"],
+            "RAYON_NUM_THREADS": str(execution["rayon_num_threads"]),
             "RUST_LOG": "warn",
             "CARGO_TERM_COLOR": "never",
         }
@@ -274,7 +276,18 @@ def run_test(source: Path, test: dict, timeout: float) -> dict:
         return _scan_log(log_path, test, elapsed)
 
 
-def _artifact(profile: dict, provenance: dict, results: list[dict]) -> dict:
+def _execution_profile(args) -> dict:
+    if args.rayon_threads <= 0:
+        raise StandaloneQualificationError("Rayon thread count must be positive")
+    return {
+        "risc0_prover": args.prover,
+        "rayon_num_threads": args.rayon_threads,
+    }
+
+
+def _artifact(
+    profile: dict, provenance: dict, results: list[dict], execution: dict
+) -> dict:
     completed = {result["id"] for result in results}
     required = set(TEST_BY_ID)
     return {
@@ -286,6 +299,7 @@ def _artifact(profile: dict, provenance: dict, results: list[dict]) -> dict:
         ),
         "scope": "local-standalone-not-public-testnet-evidence",
         "risc0_dev_mode": 0,
+        "execution": execution,
         "network_identity": {
             "lez_release": profile["lez_release"],
             "lez_release_commit": profile["release_commit"],
@@ -304,7 +318,9 @@ def _artifact(profile: dict, provenance: dict, results: list[dict]) -> dict:
     }
 
 
-def _resume_results(path: Path, profile: dict, provenance: dict) -> list[dict]:
+def _resume_results(
+    path: Path, profile: dict, provenance: dict, execution: dict
+) -> list[dict]:
     if not path.exists():
         return []
     try:
@@ -326,6 +342,7 @@ def _resume_results(path: Path, profile: dict, provenance: dict) -> list[dict]:
         prior.get("schema_version") != 1
         or prior.get("scope") != "local-standalone-not-public-testnet-evidence"
         or prior.get("risc0_dev_mode") != 0
+        or prior.get("execution") != execution
         or prior.get("network_identity") != expected_identity
         or prior.get("official_wallet") != expected_wallet
     ):
@@ -350,15 +367,22 @@ def qualify(args) -> dict:
         raise StandaloneQualificationError("RISC0_DEV_MODE must be exactly 0")
     profile = lez_wallet.load_network_profile(args.profile.resolve(strict=True))
     provenance = lez_wallet.verify_source(args.wallet_source, profile)
-    results = [] if args.fresh else _resume_results(args.evidence, profile, provenance)
+    execution = _execution_profile(args)
+    results = (
+        []
+        if args.fresh
+        else _resume_results(args.evidence, profile, provenance, execution)
+    )
     selected = TESTS if not args.cases else tuple(TEST_BY_ID[case] for case in args.cases)
     for test in selected:
         print(f"running {test['id']}", file=sys.stderr, flush=True)
-        result = run_test(Path(provenance["source"]), test, args.timeout)
+        result = run_test(Path(provenance["source"]), test, args.timeout, execution)
         results = [existing for existing in results if existing["id"] != test["id"]]
         results.append(result)
-        lez_wallet.atomic_json(args.evidence, _artifact(profile, provenance, results))
-    artifact = _artifact(profile, provenance, results)
+        lez_wallet.atomic_json(
+            args.evidence, _artifact(profile, provenance, results, execution)
+        )
+    artifact = _artifact(profile, provenance, results, execution)
     lez_wallet.atomic_json(args.evidence, artifact)
     return artifact
 
@@ -369,6 +393,18 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--wallet-source", type=Path, required=True)
     result.add_argument("--run", action="store_true")
     result.add_argument("--timeout", type=float, default=7200.0)
+    result.add_argument(
+        "--prover",
+        choices=("ipc", "actor"),
+        default="ipc",
+        help="explicit local RISC Zero prover backend",
+    )
+    result.add_argument(
+        "--rayon-threads",
+        type=int,
+        default=1,
+        help="exact Rayon worker count recorded in evidence",
+    )
     result.add_argument(
         "--case",
         dest="cases",
@@ -390,6 +426,8 @@ def main() -> int:
     try:
         if args.timeout <= 0:
             raise StandaloneQualificationError("timeout must be positive")
+        if args.rayon_threads <= 0:
+            raise StandaloneQualificationError("Rayon thread count must be positive")
         response = qualify(args)
         print(json.dumps(response, sort_keys=True))
         return 0
