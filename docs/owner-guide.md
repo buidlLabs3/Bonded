@@ -25,7 +25,7 @@ local interaction test for the same `BondedInboxPage` packaged into the
 Basecamp `.lgx`; it is not connected to an owner identity or LEZ testnet.
 
 ```bash
-BONDED_QML_RUNNER=/absolute/path/to/qmlscene scripts/run-basecamp-preview.sh
+nix run .#basecamp-preview
 ```
 
 Use the four tabs to exercise message acceptance and rejection, task state,
@@ -35,6 +35,8 @@ handled by the preview fixture. Closing the window ends the preview.
 For a non-interactive instantiation check:
 
 ```bash
-QT_QPA_PLATFORM=offscreen BONDED_QML_RUNNER=/absolute/path/to/qmlscene \
-  scripts/run-basecamp-preview.sh --smoke
+nix run .#basecamp-preview-smoke
 ```
+
+Without Nix, set `BONDED_QML_RUNNER` to a Qt 6 `qmlscene` executable and run
+`scripts/run-basecamp-preview.sh` directly.

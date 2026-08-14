@@ -42,10 +42,10 @@ produces `logos-bonded_inbox-module-lib.lgx` through the `result` link.
 The Basecamp build separately produces `logos-bonded_inbox_ui-module.lgx`
 through the upstream builder's supported QML-module packaging path.
 
-Run the owner UI locally with a Qt 6 QML runner:
+Run the owner UI locally with the pinned Qt dependency:
 
 ```bash
-BONDED_QML_RUNNER=/absolute/path/to/qmlscene scripts/run-basecamp-preview.sh
+nix run .#basecamp-preview
 ```
 
 The preview uses non-secret fixture records and exercises inbox decisions,
@@ -62,8 +62,7 @@ nix develop --command bash scripts/run-service-tests.sh
 nix develop --command bash scripts/run-second-half-tests.sh
 nix develop --command bash scripts/run-skill-runtime-tests.sh
 scripts/run-python-tests.sh
-QT_QPA_PLATFORM=offscreen BONDED_QML_RUNNER=/absolute/path/to/qmlscene \
-  scripts/run-basecamp-preview.sh --smoke
+nix run .#basecamp-preview-smoke
 cargo test --locked --manifest-path programs/bonded-inbox/Cargo.toml
 cargo check --locked --manifest-path programs/bonded-inbox/lez-guest/Cargo.toml
 nix build .#generate -L

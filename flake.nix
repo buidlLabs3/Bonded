@@ -42,5 +42,36 @@
             basecamp-lgx = basecamp.packages.${system}.lgx;
           })
         core.packages;
+      apps = builtins.mapAttrs
+        (system: _:
+          let
+            pkgs = logos-module-builder.inputs.nixpkgs.legacyPackages.${system};
+            qml = pkgs.qt6.qtdeclarative;
+            preview = pkgs.writeShellScript "bonded-basecamp-preview" ''
+              exec ${qml}/bin/qmlscene \
+                -I ${qml}/lib/qt-6/qml \
+                -I ${./basecamp} \
+                ${./basecamp/preview/Main.qml}
+            '';
+            smoke = pkgs.writeShellScript "bonded-basecamp-preview-smoke" ''
+              export QT_QPA_PLATFORM=offscreen
+              export QT_ACCESSIBILITY=0
+              exec ${qml}/bin/qmlscene \
+                -I ${qml}/lib/qt-6/qml \
+                -I ${./basecamp} \
+                ${./basecamp/preview/Smoke.qml}
+            '';
+          in
+          (core.apps.${system} or { }) // {
+            basecamp-preview = {
+              type = "app";
+              program = "${preview}";
+            };
+            basecamp-preview-smoke = {
+              type = "app";
+              program = "${smoke}";
+            };
+          })
+        core.packages;
     };
 }
