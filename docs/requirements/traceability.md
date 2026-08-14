@@ -26,7 +26,7 @@ or a testnet result.
 | REL-03 | Skill failures are isolated | 04, 14 | failing external skill followed by healthy dispatch | verified-local |
 | PERF-01 | CU cost for every on-chain operation | 09, 20 | Dated CU report | planned |
 | CI-01 | Standalone LEZ end-to-end CI | 18 | fast CI implemented; real environment remains conditional | implemented |
-| CI-02 | Real proofs with `RISC0_DEV_MODE=0` | 09, 18, 21 | [`evidence/standalone/official-wallet-real-proof.json`](../../evidence/standalone/official-wallet-real-proof.json): 4/5 cases; private-transfer proof pending | implemented |
+| CI-02 | Real proofs with `RISC0_DEV_MODE=0` | 09, 18, 21 | [`evidence/standalone/official-wallet-real-proof-v2.json`](../../evidence/standalone/official-wallet-real-proof-v2.json): all 5/5 pinned official-wallet standalone cases pass, including the real private-transfer proof | verified-local |
 | UI-01 | Basecamp owner experience and assets | 16 | Runnable fixture preview, static asset checks, offscreen Qt instantiation, and `nix build .#basecamp-lgx`; live host test pending | verified-local |
 | DEPLOY-01 | Three testnet agents: Messaging, Storage, Blockchain | 20 | Deployment evidence bundles | planned |
 | DEMO-01 | Personal file vault | 21 | storage skill local demo/tests | verified-local |
@@ -36,8 +36,8 @@ or a testnet result.
 | BOND-02 | Rejected goes to fixed sink, never owner | 09, 10 | C++ and Rust invariant tests | verified-local |
 | BOND-03 | Expired and failed delivery return full bond | 09, 10 | C++ and Rust lifecycle tests | verified-local |
 | BOND-04 | Classification alone cannot confiscate funds | 12 | triage and inbox adversarial tests | verified-local |
-| BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20A-20F | Corrected official-wallet deployment has two separated finalized observations and paired transaction/block captures; private-transfer real-proof and lifecycle calls remain pending | implemented |
-| LEZ-01 | Release transactions use the pinned official wallet path | 20B | Corrected deployment and wallet provisioning use the pinned official path; standalone qualification remains 4/5 while the private-transfer proof runs | implemented |
+| BOND-05 | Real LEZ settlement guest and fail-closed publication | 09, 20A-20F | Corrected official-wallet deployment has two separated finalized observations and paired transaction/block captures; standalone real-proof qualification passes 5/5 while public lifecycle calls remain pending | implemented |
+| LEZ-01 | Release transactions use the pinned official wallet path | 20B | Corrected deployment and wallet provisioning use the pinned official path; standalone qualification passes 5/5 with `RISC0_DEV_MODE=0`; public lifecycle/value matrices remain pending | implemented |
 | LEZ-02 | Settlement deployment passes the complete public explorer evidence gate | 20C, 20F | `settlement-program-deployment` row passes the offline gate with exact binary/program/transaction/block bindings and paired browser captures | implemented |
 | LEZ-03 | Registration/funding transactions pass the public explorer evidence gate | 20B, 20E, 20F | All three `register-*` rows and `fund-sender` pass the offline evidence gate; whole-inventory live release audit remains pending | implemented |
 | LEZ-04 | Acceptance, rejection, expiry, and delivery-failure transactions pass the public explorer gate | 20D, 20F | Eight lifecycle inventory rows | planned |

@@ -196,13 +196,12 @@ boundary without weakening any chunk exit criterion:
   build qualify the local boundary; live multi-process interoperability and
   fault injection remain required.
 - Chunk 20A and the canonical settlement publication part of 20C are reconciled.
-  Chunk 20B standalone wallet qualification is 4/5 while the real private-proof
-  case remains open with `RISC0_DEV_MODE=0`. A single-thread attempt exhausted
-  its six-hour budget without a protocol rejection; a later twelve-hour attempt
-  was externally interrupted after about two hours and produced no evidence.
-  RISC Zero 3.0.5 does not checkpoint this local proof, so the next fresh run
-  must use an operator-owned long-running service and bind its explicit local
-  prover/thread settings into one complete five-case artifact.
+  Chunk 20B standalone wallet qualification passes all 5/5 cases in
+  `evidence/standalone/official-wallet-real-proof-v2.json`, including the real
+  private-transfer proof with `RISC0_DEV_MODE=0`. The completed artifact binds
+  LEZ v0.2.4 commit `47eba256479f6f785acbd138834340703cd03401`, the IPC
+  prover, and two Rayon threads. Its scope remains local standalone evidence;
+  it does not replace the separate public-testnet transaction inventory.
 - Chunk 20E wallet provisioning evidence passes for sender, owner, sink, and
   sender funding. Sink
   transaction

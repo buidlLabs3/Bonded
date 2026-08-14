@@ -1,0 +1,112 @@
+{
+  "completed_case_ids": [
+    "duplicate-transaction-rejected",
+    "insufficient-funds-rejected",
+    "invalid-program-rejected",
+    "official-wallet-private-transfer-real-proof",
+    "official-wallet-program-deployment"
+  ],
+  "execution": {
+    "rayon_num_threads": 2,
+    "risc0_prover": "ipc"
+  },
+  "network_identity": {
+    "lez_release": "v0.2.4",
+    "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401",
+    "standalone_channel": "isolated-per-test"
+  },
+  "observed_at_utc": "2026-08-14T12:13:50+00:00",
+  "official_wallet": {
+    "binary_sha256": "2db43ba09cc925346c0d253e9aa9a7fedda6536acbdb0649fa47b84863241197",
+    "binary_size": 116124960,
+    "source_commit": "47eba256479f6f785acbd138834340703cd03401",
+    "source_repository": "https://github.com/logos-blockchain/logos-execution-zone.git"
+  },
+  "required_case_ids": [
+    "duplicate-transaction-rejected",
+    "insufficient-funds-rejected",
+    "invalid-program-rejected",
+    "official-wallet-private-transfer-real-proof",
+    "official-wallet-program-deployment"
+  ],
+  "risc0_dev_mode": 0,
+  "schema_version": 1,
+  "scope": "local-standalone-not-public-testnet-evidence",
+  "status": "verified-standalone-real-proof",
+  "tests": [
+    {
+      "block_ids": [],
+      "captured_log_bytes": 13747,
+      "captured_log_sha256": "544a8e8af12fcf53f85b34dcd0bc55fd8fa9e56120992cf1db7180e17d18fb23",
+      "elapsed_seconds": 403.256,
+      "id": "duplicate-transaction-rejected",
+      "official_transaction_debug_sha256": [],
+      "proof_mode": "negative-validation",
+      "status": "passed",
+      "transaction_hashes": [],
+      "upstream_test": "tests::replay_transactions_are_rejected_in_different_blocks"
+    },
+    {
+      "block_ids": [],
+      "captured_log_bytes": 1862,
+      "captured_log_sha256": "d11eb7012fcaac3d8866dd4d3c5682f4f3b698c94ea7b7ecd5bcf4e8436ff2d0",
+      "elapsed_seconds": 130.196,
+      "id": "insufficient-funds-rejected",
+      "official_transaction_debug_sha256": [],
+      "proof_mode": "negative-validation",
+      "status": "passed",
+      "transaction_hashes": [],
+      "upstream_test": "public::failed_transfer_with_insufficient_balance"
+    },
+    {
+      "block_ids": [],
+      "captured_log_bytes": 4130,
+      "captured_log_sha256": "a2e0089a8b9e615383ca3c76ca36cc659dad051ebe44aa3b70c033986f2ad4d5",
+      "elapsed_seconds": 161.768,
+      "id": "invalid-program-rejected",
+      "official_transaction_debug_sha256": [],
+      "proof_mode": "negative-validation",
+      "status": "passed",
+      "transaction_hashes": [
+        "99690ba72601b0adc59b3048127204c80fffb465cce91625d219162b09e0f965"
+      ],
+      "upstream_test": "deploy_invalid_program_fails"
+    },
+    {
+      "block_ids": [
+        14
+      ],
+      "captured_log_bytes": 1163126,
+      "captured_log_sha256": "e5ab3bd148b0670d0551c05e52dffd9488a6069cc7d54624568851b2b7953db3",
+      "elapsed_seconds": 15814.982,
+      "id": "official-wallet-private-transfer-real-proof",
+      "official_transaction_debug_sha256": [
+        "3e7bab5d8e73b43c378e382b8fc28a22ecf36ab4364f56a3ffbece0833ac6270"
+      ],
+      "proof_mode": "risc0-real-proof",
+      "status": "passed",
+      "transaction_hashes": [
+        "15582810befd344481fb9108e45ff684da67c5f5e3ba0bac36a740ab3dd81607"
+      ],
+      "upstream_test": "private::private_transfer_to_owned_account"
+    },
+    {
+      "block_ids": [
+        13
+      ],
+      "captured_log_bytes": 4241,
+      "captured_log_sha256": "24bd055a0c415dfdab8d124f44a36ac3db7cada543197e82b70a0903fcbea643",
+      "elapsed_seconds": 169.098,
+      "id": "official-wallet-program-deployment",
+      "official_transaction_debug_sha256": [
+        "1e979c151ec0f9b62e76a10a27ad69ffb885ca4d54bbc28e1700d38d07b5506a"
+      ],
+      "proof_mode": "unsigned-program-deployment",
+      "status": "passed",
+      "transaction_hashes": [
+        "0e54eaba8074d403af150d8617bc33c5eaef3b20812dd552a3b82c1ef9fee8ce"
+      ],
+      "upstream_test": "deploy_and_execute_program"
+    }
+  ]
+}

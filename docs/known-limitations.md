@@ -15,10 +15,11 @@
   wallet and passes its explorer-evidence row with two separated finalized
   observations and paired fresh-browser captures. Publication does not prove a
   completed bond lifecycle or an agent-profile deployment.
-- Official-wallet standalone qualification currently passes deployment,
-  malformed-program rejection, insufficient-funds rejection, and duplicate
-  replay rejection. The real privacy-preserving transfer proof is still pending,
-  so the artifact remains `qualification-in-progress`.
+- Official-wallet standalone qualification passes all five required cases in
+  `evidence/standalone/official-wallet-real-proof-v2.json`, including a real
+  privacy-preserving transfer proof with `RISC0_DEV_MODE=0`. This qualifies the
+  pinned wallet/prover path locally; its declared scope is not public testnet
+  evidence and does not qualify the pending lifecycle or value-transfer rows.
 - The sender-registration transaction
   `2e64e58926ec14b4b59c477c7bd0f63a824e4f7122f8410ee9fd0a1ea14ba259`
   is finalized in block 4415 and passes the paired public-explorer evidence
