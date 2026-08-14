@@ -290,6 +290,8 @@ class BondWalletAdapterTests(unittest.TestCase):
                 deadline_ms=1234,
                 submit=True,
                 timeout=1,
+                prover="ipc",
+                rayon_threads=1,
                 evidence=evidence_path,
             )
             inclusion = {
@@ -355,6 +357,22 @@ class BondWalletAdapterTests(unittest.TestCase):
         candidate["bond_id"] = "different"
         with self.assertRaisesRegex(bond.BondAdapterError, "bond_id"):
             bond._validate_resume(candidate, inspection)
+
+    def test_execution_profile_is_local_explicit_and_resume_bound(self):
+        args = types.SimpleNamespace(prover="ipc", rayon_threads=4)
+        self.assertEqual(
+            bond.configure_execution(args),
+            {"risc0_prover": "ipc", "rayon_num_threads": 4},
+        )
+        self.assertEqual(os.environ["RISC0_PROVER"], "ipc")
+        self.assertEqual(os.environ["RAYON_NUM_THREADS"], "4")
+        args.prover = "bonsai"
+        with self.assertRaisesRegex(bond.BondAdapterError, "local backend"):
+            bond.configure_execution(args)
+        args.prover = "ipc"
+        args.rayon_threads = 0
+        with self.assertRaisesRegex(bond.BondAdapterError, "positive integer"):
+            bond.configure_execution(args)
 
 
 if __name__ == "__main__":

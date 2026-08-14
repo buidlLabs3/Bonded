@@ -60,6 +60,7 @@ RESUME_BINDING_FIELDS = (
     "instruction_word_count",
     "instruction_words_sha256",
     "proof_mode",
+    "execution",
     "fee_cu",
     "official_wallet",
 )
@@ -73,6 +74,23 @@ SECRET_MARKERS = lez_wallet.SENSITIVE_MARKERS + (
 
 class BondAdapterError(RuntimeError):
     pass
+
+
+def configure_execution(args) -> dict:
+    if args.prover not in ("ipc", "actor"):
+        raise BondAdapterError("RISC Zero prover must be an explicit local backend")
+    if (
+        not isinstance(args.rayon_threads, int)
+        or isinstance(args.rayon_threads, bool)
+        or args.rayon_threads <= 0
+    ):
+        raise BondAdapterError("Rayon thread count must be a positive integer")
+    os.environ["RISC0_PROVER"] = args.prover
+    os.environ["RAYON_NUM_THREADS"] = str(args.rayon_threads)
+    return {
+        "risc0_prover": args.prover,
+        "rayon_num_threads": args.rayon_threads,
+    }
 
 
 class FfiBytes32(ctypes.Structure):
@@ -554,6 +572,7 @@ def _validate_resume(candidate: dict, inspection: dict) -> None:
 
 
 def execute(args) -> dict:
+    execution = configure_execution(args)
     profile = lez_wallet.load_network_profile(args.profile.resolve(strict=True))
     provenance = lez_wallet.verify_source(args.wallet_source, profile)
     wallet = lez_wallet.verify_wallet_home(args.wallet_home, profile)
@@ -617,6 +636,7 @@ def execute(args) -> dict:
             "instruction_word_count": len(words),
             "instruction_words_sha256": instruction_digest(words),
             "proof_mode": "risc0-real-privacy-preserving",
+            "execution": execution,
             "fee_cu": "reported-by-sequencer-when-available",
             "official_wallet": {
                 "source_commit": provenance["source_commit"],
@@ -700,6 +720,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--bond-id", required=True)
     result.add_argument("--submit", action="store_true")
     result.add_argument("--timeout", type=float, default=1800.0)
+    result.add_argument("--prover", choices=("ipc", "actor"), default="ipc")
+    result.add_argument("--rayon-threads", type=int, default=1)
     commands = result.add_subparsers(dest="operation", required=True)
     initialize = commands.add_parser("initialize")
     initialize.add_argument("--message-commitment", required=True)
@@ -726,6 +748,8 @@ def main() -> int:
     try:
         if args.timeout <= 0:
             raise BondAdapterError("timeout must be positive")
+        if args.rayon_threads <= 0:
+            raise BondAdapterError("Rayon thread count must be positive")
         if args.operation == "initialize":
             if args.amount <= 0 or not 0 < args.deadline_ms <= 0xFFFFFFFFFFFFFFFF:
                 raise BondAdapterError("amount and deadline must be positive and in range")

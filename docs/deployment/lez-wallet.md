@@ -73,7 +73,7 @@ reconciliation, promote the exact journaled hash through the public explorer:
 
 ```bash
 python3 tools/lez_bond_evidence.py \
-  --candidate evidence/testnet/candidates/acceptance-initialize.json \
+  --candidate evidence/testnet/candidates/acceptance-initialize-v2.json \
   --deployment evidence/testnet/deployment/settlement-program-v2-primary.json \
   --operation acceptance-initialize \
   --verifier-commit "$(git rev-parse HEAD)" \
@@ -97,12 +97,13 @@ runner advances. The matrix journal makes a timeout resumable and refuses an
 ambiguous retry:
 
 ```bash
-RAYON_NUM_THREADS=1 RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
 python3 tools/lez_bond_matrix.py --submit --wait-for-expiry \
   --wallet-source "$BONDED_LEZ_SOURCE" --wallet-home "$LEE_WALLET_HOME_DIR" \
   --sender "$SENDER" --owner "$OWNER" --sink "$SINK" \
   --release-commit "$(git rev-parse HEAD)" --amount 10 \
-  --expiry-delay-ms 28800000 --timeout 21600 \
+  --expiry-delay-ms 28800000 --timeout 43200 \
+  --prover ipc --rayon-threads 2 \
   --journal evidence/testnet/candidates/bond-matrix-v2.json
 ```
 
@@ -162,9 +163,9 @@ python3 tools/lez_value_transfer.py execute --submit \
   --operation below-limit-transfer --profile settlement \
   --sender "$SENDER" --recipient "$RECIPIENT" --amount 2 \
   --authorization evidence/testnet/authorizations/below-limit-transfer.json \
-  --trusted-signers /external/config/trusted-value-signers.json \
-  --timeout 21600 \
-  --evidence evidence/testnet/candidates/below-limit-transfer.json
+  --trusted-signers evidence/testnet/authorizations/below-limit-transfer-trusted-signers.json \
+  --timeout 43200 --prover ipc --rayon-threads 2 \
+  --evidence evidence/testnet/candidates/below-limit-transfer-v2.json
 ```
 
 The trusted signer map is an external JSON object from required role to pinned
@@ -176,9 +177,9 @@ the wallet:
 
 ```bash
 python3 tools/lez_value_evidence.py \
-  --candidate evidence/testnet/candidates/below-limit-transfer.json \
+  --candidate evidence/testnet/candidates/below-limit-transfer-v2.json \
   --authorization evidence/testnet/authorizations/below-limit-transfer.json \
-  --trusted-signers /external/config/trusted-value-signers.json \
+  --trusted-signers evidence/testnet/authorizations/below-limit-transfer-trusted-signers.json \
   --operation below-limit-transfer \
   --verifier-commit "$(git rev-parse HEAD)" --observer primary \
   --evidence evidence/testnet/spending/below-limit-transfer.json
@@ -187,6 +188,27 @@ python3 tools/lez_value_evidence.py \
 Use a later observation with a distinct observer, then capture the exact
 transaction and block explorer pages. Application attestations do not reveal or
 replace the LEZ wallet key, and no signing private key belongs in this repository.
+
+For the release run, use `tools/lez_value_matrix.py` to validate all three
+committed authorization/signature-map pairs before proving anything and then
+execute them in the fixed below-limit, owner-approved, paid-task order. Its
+journal binds the release commit, accounts, payload and file hashes, candidate
+paths, and explicit local-prover settings; a completed candidate must match all
+of them before the next transfer starts:
+
+```bash
+RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+python3 tools/lez_value_matrix.py --submit \
+  --wallet-source "$BONDED_LEZ_SOURCE" --wallet-home "$LEE_WALLET_HOME_DIR" \
+  --sender "$SENDER" --owner "$OWNER" --sink "$SINK" \
+  --release-commit "$(git rev-parse HEAD)" \
+  --timeout 43200 --prover ipc --rayon-threads 2 \
+  --journal evidence/testnet/candidates/value-matrix-v2.json
+```
+
+The other release candidates are likewise
+`owner-approved-transfer-v2.json` and `paid-task-settlement-v2.json`; use these
+exact journals for primary and independent explorer promotion.
 
 ## Secret-Safe Wallet Setup
 
@@ -331,7 +353,7 @@ RISC Zero 3.0.5 work:
 RISC0_DEV_MODE=0 BONDED_LEZ_STANDALONE=YES \
 BONDED_LEZ_SOURCE="$BONDED_LEZ_SOURCE" \
 scripts/qualify-lez-wallet-standalone.sh \
-  --prover ipc --rayon-threads 4 --timeout 43200 --fresh
+  --prover ipc --rayon-threads 2 --timeout 43200 --fresh
 ```
 
 Fresh-browser supporting evidence is captured with

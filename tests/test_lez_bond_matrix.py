@@ -29,6 +29,8 @@ class BondMatrixTests(unittest.TestCase):
             standard_validity_ms=100_000,
             expiry_delay_ms=20_000,
             timeout=21600,
+            prover="ipc",
+            rayon_threads=4,
             submit=False,
             wait_for_expiry=False,
             journal=root / "matrix.json",
@@ -53,6 +55,8 @@ class BondMatrixTests(unittest.TestCase):
             command = matrix.command(args, "acceptance", "initialize", values)
             self.assertNotIn("--submit", command)
             self.assertIn("--deadline-ms", command)
+            self.assertEqual(command[command.index("--prover") + 1], "ipc")
+            self.assertEqual(command[command.index("--rayon-threads") + 1], "4")
             args.submit = True
             command = matrix.command(args, "acceptance", "settle", values)
             self.assertIn("--submit", command)
@@ -92,14 +96,38 @@ class BondMatrixTests(unittest.TestCase):
                         "status": "official-wallet-sequencer-finalized-candidate",
                         "operation": operation,
                         "outcome": outcome,
+                        "program_id": matrix.lez_bond.CANONICAL_PROGRAM_ID,
+                        "execution": plan["execution"],
                         "transaction_type": "PrivacyPreserving",
                         "finality": "Finalized",
                     },
                 )
             matrix.lez_wallet.atomic_json(args.journal, plan)
-            with mock.patch.object(matrix.time, "time", return_value=2):
-                with self.assertRaisesRegex(matrix.MatrixError, "early"):
-                    matrix.execute(args)
+            args.submit = True
+            with mock.patch.dict(
+                matrix.os.environ,
+                {"BONDED_LEZ_SUBMIT": "YES", "RISC0_DEV_MODE": "0"},
+                clear=True,
+            ):
+                with mock.patch.object(matrix.time, "time", return_value=2):
+                    with self.assertRaisesRegex(matrix.MatrixError, "early"):
+                        matrix.execute(args)
+
+    def test_dry_run_inspects_all_steps_without_waiting_for_expiry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = self.args(root)
+            plan = matrix.build_plan(args, 1000)
+            matrix.lez_wallet.atomic_json(args.journal, plan)
+            with mock.patch.object(matrix.time, "time", return_value=1):
+                with mock.patch.object(
+                    matrix.subprocess,
+                    "run",
+                    return_value=types.SimpleNamespace(returncode=0),
+                ) as run:
+                    result = matrix.execute(args)
+            self.assertEqual(run.call_count, len(matrix.STEPS))
+            self.assertEqual(result["completed_steps"], [])
 
 
 if __name__ == "__main__":

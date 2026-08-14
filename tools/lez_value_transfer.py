@@ -63,6 +63,7 @@ RESUME_FIELDS = (
     "authorization_sha256",
     "trusted_signers_sha256",
     "proof_mode",
+    "execution",
     "official_wallet",
 )
 
@@ -524,6 +525,7 @@ def _validate_resume(candidate: dict, inspection: dict) -> None:
 
 
 def execute(args) -> dict:
+    execution = lez_bond.configure_execution(args)
     authorization = _json_object(args.authorization, "authorization")
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     trusted_signers = load_trusted_signers(args.trusted_signers)
@@ -573,6 +575,7 @@ def execute(args) -> dict:
                 "nonce": payload["nonce"],
             },
             "proof_mode": "risc0-real-privacy-preserving",
+            "execution": execution,
             "fee_cu": "reported-by-sequencer-when-available",
             "official_wallet": {
                 "source_commit": provenance["source_commit"],
@@ -672,6 +675,8 @@ def parser() -> argparse.ArgumentParser:
     execute_command.add_argument("--trusted-signers", type=Path, required=True)
     execute_command.add_argument("--submit", action="store_true")
     execute_command.add_argument("--timeout", type=float, default=1800.0)
+    execute_command.add_argument("--prover", choices=("ipc", "actor"), default="ipc")
+    execute_command.add_argument("--rayon-threads", type=int, default=1)
     execute_command.add_argument("--evidence", type=Path, required=True)
     return result
 
@@ -688,6 +693,8 @@ def main() -> int:
         else:
             if args.timeout <= 0:
                 raise ValueTransferError("timeout must be positive")
+            if args.rayon_threads <= 0:
+                raise ValueTransferError("Rayon thread count must be positive")
             response = execute(args)
         print(json.dumps(response, sort_keys=True))
         return 0

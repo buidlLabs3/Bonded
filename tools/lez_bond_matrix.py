@@ -94,6 +94,10 @@ def build_plan(args, now_ms: int) -> dict:
             "sink": args.sink,
         },
         "proof_mode": "risc0-real-privacy-preserving-sequential",
+        "execution": {
+            "risc0_prover": args.prover,
+            "rayon_num_threads": args.rayon_threads,
+        },
         "created_at_utc": datetime.fromtimestamp(now_ms / 1000, timezone.utc)
         .replace(microsecond=0)
         .isoformat(),
@@ -122,6 +126,11 @@ def _validate_plan(plan: dict, args) -> None:
         or plan.get("release_commit") != args.release_commit
         or plan.get("accounts")
         != {"sender": args.sender, "owner": args.owner, "sink": args.sink}
+        or plan.get("execution")
+        != {
+            "risc0_prover": args.prover,
+            "rayon_num_threads": args.rayon_threads,
+        }
         or set(plan.get("cases", {})) != {case for case, _outcome in CASES}
     ):
         raise MatrixError("matrix journal does not match this exact release and account set")
@@ -133,12 +142,20 @@ def _validate_plan(plan: dict, args) -> None:
         raise MatrixError("matrix journal contains an unknown completed step")
 
 
-def _candidate(path: Path, case: str, operation: str, outcome: str | None) -> dict:
+def _candidate(
+    path: Path,
+    case: str,
+    operation: str,
+    outcome: str | None,
+    execution: dict,
+) -> dict:
     candidate = _json_object(path, f"{case}-{operation} candidate")
     if (
         candidate.get("status") != "official-wallet-sequencer-finalized-candidate"
         or candidate.get("operation") != operation
         or candidate.get("outcome") != outcome
+        or candidate.get("program_id") != lez_bond.CANONICAL_PROGRAM_ID
+        or candidate.get("execution") != execution
         or candidate.get("transaction_type") != "PrivacyPreserving"
         or candidate.get("finality") != "Finalized"
     ):
@@ -164,6 +181,10 @@ def command(args, case: str, operation: str, values: dict) -> list[str]:
         values["bond_id"],
         "--timeout",
         str(args.timeout),
+        "--prover",
+        args.prover,
+        "--rayon-threads",
+        str(args.rayon_threads),
     ]
     if args.submit:
         result.append("--submit")
@@ -200,18 +221,20 @@ def execute(args) -> dict:
         lez_wallet.atomic_json(args.journal, plan)
     _validate_plan(plan, args)
     completed = set(plan["completed_steps"])
+    visited = set(completed)
+    execution = plan["execution"]
     for case, operation, outcome in STEPS:
         step = f"{case}-{operation}"
         values = plan["cases"][case]
         path = Path(values["candidate_paths"][operation])
         if step in completed:
-            _candidate(path, case, operation, outcome)
+            _candidate(path, case, operation, outcome, execution)
             continue
-        if operation == "settle" and f"{case}-initialize" not in completed:
+        if operation == "settle" and f"{case}-initialize" not in visited:
             raise MatrixError(f"{case} settlement cannot run before its initialization")
         if operation == "initialize" and int(time.time() * 1000) >= values["deadline_ms"]:
             raise MatrixError(f"{case} initialization validity window has expired")
-        if operation == "settle" and case == "expiry":
+        if args.submit and operation == "settle" and case == "expiry":
             remaining = values["deadline_ms"] - int(time.time() * 1000)
             if remaining > 0:
                 if not args.wait_for_expiry:
@@ -224,9 +247,11 @@ def execute(args) -> dict:
         if process.returncode != 0:
             raise MatrixError(f"{step} failed with exit {process.returncode}")
         if not args.submit:
+            visited.add(step)
             continue
-        _candidate(path, case, operation, outcome)
+        _candidate(path, case, operation, outcome, execution)
         completed.add(step)
+        visited.add(step)
         plan["completed_steps"] = sorted(completed)
         plan["status"] = "completed" if len(completed) == len(STEPS) else "in-progress"
         plan["observed_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -246,6 +271,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--standard-validity-ms", type=int, default=14 * 24 * 60 * 60 * 1000)
     result.add_argument("--expiry-delay-ms", type=int, default=8 * 60 * 60 * 1000)
     result.add_argument("--timeout", type=float, default=21600)
+    result.add_argument("--prover", choices=("ipc", "actor"), default="ipc")
+    result.add_argument("--rayon-threads", type=int, default=1)
     result.add_argument("--submit", action="store_true")
     result.add_argument("--wait-for-expiry", action="store_true")
     result.add_argument(
@@ -264,8 +291,8 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     try:
-        if args.timeout <= 0:
-            raise MatrixError("timeout must be positive")
+        if args.timeout <= 0 or args.rayon_threads <= 0:
+            raise MatrixError("timeout and Rayon thread count must be positive")
         response = execute(args)
         print(json.dumps(response, sort_keys=True))
         return 0

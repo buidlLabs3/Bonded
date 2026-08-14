@@ -217,6 +217,12 @@ boundary without weakening any chunk exit criterion:
   deployments, the independent release audit, narrated video, tag, and
   submission also remain open. No submission pull request may be created
   without explicit owner instruction.
+- Both public mutation matrices now force and journal one explicit local RISC
+  Zero backend/thread profile. The three signed value operations additionally
+  have a release-bound sequential runner that verifies every authorization,
+  signer map, account, amount, and finalized candidate before advancing. These
+  controls are locally verified; they do not count as any of the 11 missing
+  explorer rows.
 
 ---
 
