@@ -68,6 +68,9 @@ jobs:
       - name: Build Basecamp QML package
         run: nix build .#basecamp-lgx -L
 
+      - name: Instantiate Basecamp owner UI
+        run: nix run .#basecamp-preview-smoke
+
   real-proof-e2e:
     if: ${{ vars.ENABLE_REAL_PROOF_E2E == 'true' }}
     runs-on: [self-hosted, linux, x64, lez-real-proof]
