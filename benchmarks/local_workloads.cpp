@@ -191,7 +191,9 @@ Json recoveryBenchmark(const std::filesystem::path& database_path)
 Json settlementBenchmark()
 {
     constexpr std::size_t bonds = 30000;
-    BondService service;
+    Database database(":memory:");
+    database.migrate();
+    BondService service(database);
     const auto started = Clock::now();
     for (std::size_t index = 0; index < bonds; ++index) {
         const auto id = "bond-" + std::to_string(index);

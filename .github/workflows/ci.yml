@@ -44,6 +44,9 @@ jobs:
       - name: Run CLI and Basecamp asset tests
         run: scripts/run-python-tests.sh
 
+      - name: Run local performance qualification
+        run: nix develop --command python3 tools/benchmark_local.py
+
       - name: Reject unsupported testnet traceability claims
         run: python3 tools/traceability_gate.py
 

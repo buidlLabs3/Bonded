@@ -26,7 +26,7 @@ remain separate release gates.
 | One-MiB attachment round-trip | >= 5 MiB/s |
 | Concurrent A2A completion | >= 50 tasks/s |
 | Durable reopen and verification | <= 500 ms |
-| Local bond lock + settle | >= 5,000 operations/s |
+| Local bond lock + settle (migrated in-memory SQLite) | >= 5,000 operations/s |
 | Native peak RSS | <= 262,144 KiB |
 
 Supported defensive defaults are a one MiB attachment limit in the example
