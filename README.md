@@ -42,6 +42,18 @@ produces `logos-bonded_inbox-module-lib.lgx` through the `result` link.
 The Basecamp build separately produces `logos-bonded_inbox_ui-module.lgx`
 through the upstream builder's supported QML-module packaging path.
 
+Run the owner UI locally with a Qt 6 QML runner:
+
+```bash
+BONDED_QML_RUNNER=/absolute/path/to/qmlscene scripts/run-basecamp-preview.sh
+```
+
+The preview uses non-secret fixture records and exercises inbox decisions,
+task visibility, spending approvals, settings publication, refresh, offline,
+loading, and empty states. It does not submit owner actions or testnet
+transactions. Basecamp loads the packaged entrypoint from
+`basecamp/BondedInbox/BondedInboxPage.qml` in an integrated deployment.
+
 ## Test
 
 ```bash
@@ -50,6 +62,8 @@ nix develop --command bash scripts/run-service-tests.sh
 nix develop --command bash scripts/run-second-half-tests.sh
 nix develop --command bash scripts/run-skill-runtime-tests.sh
 scripts/run-python-tests.sh
+QT_QPA_PLATFORM=offscreen BONDED_QML_RUNNER=/absolute/path/to/qmlscene \
+  scripts/run-basecamp-preview.sh --smoke
 cargo test --locked --manifest-path programs/bonded-inbox/Cargo.toml
 cargo check --locked --manifest-path programs/bonded-inbox/lez-guest/Cargo.toml
 nix build .#generate -L
