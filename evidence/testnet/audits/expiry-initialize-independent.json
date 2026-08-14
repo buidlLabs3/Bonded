@@ -1,0 +1,117 @@
+{
+  "block": 7374,
+  "block_hash": "cc7fb71c7db370dd6b3da692d28b7097a016f2a5a922bff4fd5004bbbabf3af6",
+  "bond_provenance": {
+    "binary_sha256": "8bbc443fa4580b8cffad387918675f0a175411fe268cac0ac3df74793184856a",
+    "binary_size": 368324,
+    "bond_id": "720c442920f905078945d84d61e2d92859d05e303282cb3cf08971d0b2a44e8b",
+    "instruction_word_count": 199,
+    "instruction_words_sha256": "de0e59ff69f76c74ef544b02823ad192f47b606271d7aafe5193d69fe190c983",
+    "journal_sha256": "a57c5c3328186b120e549846386455bf84d7145794d3765c96ad972545217354",
+    "outcome": null,
+    "program_id": "50ce86eebf3a01a5febe8cc735895adf361c2fa43a14947277e3d1050fbdcb8b",
+    "state_reconciliation": "validated-before-and-after-by-tools/lez_bond.py"
+  },
+  "checks": {
+    "confirmation_depth_satisfied": true,
+    "expected_accounts_match": true,
+    "expected_program_matches": true,
+    "explorer_block_contains_transaction": true,
+    "explorer_block_hash_matches_sequencer": true,
+    "explorer_block_is_finalized": true,
+    "explorer_reached_candidate_block": true,
+    "explorer_transaction_hash_matches": true,
+    "explorer_transaction_type_matches": true,
+    "sequencer_block_id_matches": true,
+    "sequencer_block_is_finalized": true,
+    "sequencer_transaction_block_matches": true,
+    "sequencer_transaction_hash_matches": true,
+    "sequencer_transaction_type_matches": true,
+    "three_or_more_finalized_overlaps_match": true
+  },
+  "component": "settlement-program",
+  "confirmation_depth": 176,
+  "explorer_urls": {
+    "block": "https://explorer.testnet.lez.logos.co/block/7374",
+    "transaction": "https://explorer.testnet.lez.logos.co/transaction/2f0b7394094047dec0d76b3d02cd4875ff123c92a5dbc5e1a76d80abe247a024"
+  },
+  "finality": "Finalized",
+  "kind": "bond-lifecycle",
+  "network": "lez-testnet",
+  "network_identity": {
+    "channel_id": "0101010101010101010101010101010101010101010101010101010101010101",
+    "lez_release": "v0.2.4",
+    "lez_release_commit": "47eba256479f6f785acbd138834340703cd03401"
+  },
+  "observations": {
+    "explorer_latest_finalized": {
+      "bedrock_status": "Finalized",
+      "block_id": 7550,
+      "hash": "c2b5435bb6ffdfed960c29a2476cdb21aadede004312dee712e89dd8927da0a9",
+      "timestamp": 1786727442552
+    },
+    "indexer_finalized_lag_blocks": 0,
+    "lag_scan_complete": true,
+    "newest_sequencer_finalized_at_scan": 7550,
+    "overlapping_finalized_blocks": [
+      {
+        "block_id": 7550,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "c2b5435bb6ffdfed960c29a2476cdb21aadede004312dee712e89dd8927da0a9",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "c2b5435bb6ffdfed960c29a2476cdb21aadede004312dee712e89dd8927da0a9"
+      },
+      {
+        "block_id": 7549,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "ac65b812d34200a14f1a552801034150768bbda34099bd977b041eb0f85d13cc",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "ac65b812d34200a14f1a552801034150768bbda34099bd977b041eb0f85d13cc"
+      },
+      {
+        "block_id": 7548,
+        "explorer_finality": "Finalized",
+        "explorer_hash": "c0d5a3f3f75ebbf4cf7b373b50e0258cfb2b11c4f5473227626acc5d3ae7b181",
+        "matches": true,
+        "sequencer_finality": "Finalized",
+        "sequencer_hash": "c0d5a3f3f75ebbf4cf7b373b50e0258cfb2b11c4f5473227626acc5d3ae7b181"
+      }
+    ],
+    "sequencer_head": {
+      "bedrock_status": "Pending",
+      "block_id": 7606,
+      "hash": "16b939a927e66fe5bdf010bacbe9a5976b3ce191cb17958c36fd439ab5ebe76d",
+      "prev_block_hash": "a8157d53350e2a2a4be3733f45ae30879bb51012d8520a71f08781022d02701d",
+      "timestamp": 1786730809787,
+      "transaction_count": 1
+    }
+  },
+  "observed_at_utc": "2026-08-14T18:07:23+00:00",
+  "operation": "expiry-initialize",
+  "public_account_ids": [
+    "6oFNU77YaPqJVB69t1rPwGdYeULXixugNR9KJiNocWLR",
+    "ASjk7jz4WQU4uM5ngzJZUNPh38N2sA26ZNbuiSRW1LoF",
+    "9KbMqdPTRGgWGWNUAQ9acVKa9fcpRbcXxo5cW5U4E1X9"
+  ],
+  "public_program_id": null,
+  "required_confirmation_depth": 3,
+  "schema_version": 1,
+  "serialized_transaction_size": 272071,
+  "services": {
+    "explorer": "https://explorer.testnet.lez.logos.co",
+    "indexer": "server-side behind official explorer; no public endpoint discovered",
+    "sequencer": "https://testnet.lez.logos.co"
+  },
+  "status": "finalized",
+  "transaction": "2f0b7394094047dec0d76b3d02cd4875ff123c92a5dbc5e1a76d80abe247a024",
+  "transaction_type": "PrivacyPreserving",
+  "verifier": {
+    "command": "python3 tools/lez_explorer.py transaction [exact identifiers]",
+    "observer": "independent-audit",
+    "result": "pass",
+    "source": "tools/lez_explorer.py",
+    "source_commit": "0d1877010a0bb23ee29110c2ee177bf7ed95698e"
+  }
+}
