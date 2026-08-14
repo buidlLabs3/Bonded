@@ -1,16 +1,26 @@
 # Contributing
 
+Use disposable identities and testnet tokens. Never commit keys, wallet storage,
+databases, generated `.lgx` files, raw wallet logs, or real message content.
+
 ## Development
 
-1. Install Nix with flakes enabled.
-2. Run `nix develop`.
-3. Run `cmake --preset dev` and `cmake --build --preset dev`.
-4. Run `ctest --preset dev` before proposing a change.
+```bash
+nix develop
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
+scripts/run-python-tests.sh
+```
 
-Use only disposable development identities and testnet tokens. Never commit
-generated keys, databases, `.lgx` packages, or message fixtures containing real
-content.
+Run the focused Rust checks when changing settlement code:
 
-Code must be formatted with `clang-format`, compile without new warnings, and
-include tests for changed behavior. Financial state transitions require tests
-for duplicates, retries, crashes, and conflicting terminal decisions.
+```bash
+cargo test --locked --manifest-path programs/bonded-inbox/Cargo.toml
+cargo check --locked --manifest-path programs/bonded-inbox/lez-guest/Cargo.toml
+```
+
+Format C++ with `clang-format`. Add tests for changed behavior. Financial state
+changes must cover duplicate, retry, crash, timeout, and conflicting terminal
+decisions. Testnet evidence must come from the official wallet path and pass the
+read-only evidence gate before documentation claims are updated.

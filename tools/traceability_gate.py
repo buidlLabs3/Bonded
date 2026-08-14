@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TRACEABILITY = REPO_ROOT / "docs/requirements/traceability.md"
+DEFAULT_TRACEABILITY = REPO_ROOT / "docs/OPERATIONS.md"
 ROW = re.compile(r"^\|\s*([^|]+?)\s*\|(?:[^|]*\|){3}\s*([^|]+?)\s*\|\s*$")
 ALLOWED_STATUSES = {"planned", "implemented", "verified-local", "verified-testnet"}
 

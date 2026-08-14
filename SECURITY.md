@@ -1,12 +1,18 @@
 # Security Policy
 
-Bonded Inbox handles private messages and financial state. Do not open a public
-issue for a suspected vulnerability that could expose keys, plaintext, or funds.
-Use GitHub's private vulnerability reporting for this repository.
+Bonded Inbox handles private messages and testnet financial state. Report
+vulnerabilities through GitHub private vulnerability reporting, not a public
+issue, when keys, plaintext, identities, or funds may be exposed.
 
-Never include live credentials, private messages, wallet material, or testnet
-recovery phrases in a report. Include the affected revision, impact, minimal
-reproduction using disposable fixtures, and any suggested mitigation.
+Never include credentials, recovery phrases, private keys, wallet storage,
+private messages, raw proofs, or complete wallet history in reports or evidence.
+Use disposable fixtures and include the affected commit, impact, and minimal
+reproduction.
 
-Only the latest tagged release is supported. The project is experimental
-testnet software and is not approved for production funds.
+Wallet directories must remain outside the repository with mode `0700`; wallet
+files and signer keys must be mode `0600`. Message content and attachment bytes
+never belong on-chain. A model result cannot confiscate a bond: rejection needs
+an explicit owner decision or a deterministic signed policy rule.
+
+The project is experimental testnet software and is not approved for production
+funds or identities. Only the latest tagged release is supported.
