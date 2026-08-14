@@ -8,6 +8,8 @@ or notification.
 
 Static asset tests cover the entrypoint, offline/loading/empty markers,
 review/task/approval lists, rejection-sink confirmation, accessible names, and
-absence of key/seed strings. Live screen-reader, localization, high-DPI, mobile
-viewport, and Basecamp replica integration checks remain manual release gates
-until the pinned Basecamp host is available in CI.
+absence of key/seed strings. The fixture preview also instantiates the packaged
+page with Qt's offscreen platform plugin and exposes all four owner workflows.
+Live screen-reader, localization, high-DPI, physical mobile viewport, and
+Basecamp replica integration checks remain manual release gates until the
+pinned Basecamp host is available in CI.

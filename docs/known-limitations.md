@@ -39,8 +39,9 @@
   not been collected.
 - `scripts/e2e-real-proof.sh` intentionally exits nonzero even when
   `RISC0_DEV_MODE=0` until the real sequencer environment is provisioned.
-- Basecamp QML assets have static checks but not live host/replica, screen-reader,
-  localization, or viewport evidence.
+- Basecamp QML assets have static checks, a runnable fixture preview, an
+  offscreen Qt instantiation test, and a packaged `.lgx`. Live host/replica,
+  screen-reader, localization, and physical viewport evidence remain pending.
 - Third-party skills can be registered and isolated at build time; dynamic ABI
   loading waits for a stable upstream plugin contract.
 - The CLI writes a service descriptor but does not download or start Logos Core.

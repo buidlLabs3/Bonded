@@ -27,7 +27,7 @@ or a testnet result.
 | PERF-01 | CU cost for every on-chain operation | 09, 20 | Dated CU report | planned |
 | CI-01 | Standalone LEZ end-to-end CI | 18 | fast CI implemented; real environment remains conditional | implemented |
 | CI-02 | Real proofs with `RISC0_DEV_MODE=0` | 09, 18, 21 | [`evidence/standalone/official-wallet-real-proof.json`](../../evidence/standalone/official-wallet-real-proof.json): 4/5 cases; private-transfer proof pending | implemented |
-| UI-01 | Basecamp owner experience and assets | 16 | QML assets/static tests; live host test pending | implemented |
+| UI-01 | Basecamp owner experience and assets | 16 | Runnable fixture preview, static asset checks, offscreen Qt instantiation, and `nix build .#basecamp-lgx`; live host test pending | verified-local |
 | DEPLOY-01 | Three testnet agents: Messaging, Storage, Blockchain | 20 | Deployment evidence bundles | planned |
 | DEMO-01 | Personal file vault | 21 | storage skill local demo/tests | verified-local |
 | DEMO-02 | Paid skill marketplace/private pipeline | 21 | A2A paid-task local demo/tests | verified-local |

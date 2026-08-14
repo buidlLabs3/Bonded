@@ -10,7 +10,7 @@ submission-complete claim.
 | 13 | Signed cards, discovery, paid task lifecycle/refund | `test_second_half`, A2A binding | Official transport interoperability and testnet escrow |
 | 14 | Exact 21-skill catalog, signed configuration, isolation | `test_skill_runtime` | Stable dynamic third-party ABI |
 | 15 | Plan/deploy/status/health/policy/fund/approval/backup/restore/upgrade/rollback/teardown CLI | `test_cli.py` | Clean machine with live Logos Core service |
-| 16 | Packaged QML owner views and safety confirmation | `test_assets.py`, `nix build .#basecamp-lgx` | Live Basecamp replica, accessibility, and viewport evidence |
+| 16 | Packaged QML owner views, interactive fixture preview, and safety confirmation | `scripts/run-basecamp-preview.sh`, offscreen `test_assets.py`, `nix build .#basecamp-lgx` | Live Basecamp replica, accessibility, and physical viewport evidence |
 | 17 | Redaction, breaker, bounded queue, SIGKILL/WAL recovery, persisted-bond settlement and deduplicated receipt recovery, reconciliation/runbook; pinned Delivery/Storage host bindings | `test_main`, `test_second_half`, adapter service tests, `nix build .#lib` | Official multi-process adapter fault injection |
 | 18 | Fast CI matrix and conditional fail-closed real-proof job | `.github/workflows/ci.yml` | Provisioned self-hosted sequencer runner |
 | 19 | Threat/privacy/economic reviews, finding log, SPDX SBOM | `docs/security` | External dependency/audit qualification |
