@@ -56,6 +56,7 @@ RESUME_BINDING_FIELDS = (
     "binary_sha256",
     "binary_size",
     "bond_id",
+    "call",
     "accounts",
     "instruction_word_count",
     "instruction_words_sha256",
@@ -628,6 +629,16 @@ def execute(args) -> dict:
             "binary_sha256": program["binary_sha256"],
             "binary_size": program["binary_size"],
             "bond_id": args.bond_id.lower(),
+            "call": (
+                {
+                    "message_commitment": args.message_commitment.lower(),
+                    "policy_commitment": args.policy_commitment.lower(),
+                    "amount": args.amount,
+                    "deadline_ms": args.deadline_ms,
+                }
+                if args.operation == "initialize"
+                else {"outcome": args.outcome}
+            ),
             "accounts": {
                 name: ffi.display_account(value)
                 for name, value in accounts.items()

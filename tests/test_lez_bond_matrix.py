@@ -84,6 +84,7 @@ class BondMatrixTests(unittest.TestCase):
                 "delivery-failure-initialize",
                 "delivery-failure-settle",
             ]
+            plan["status"] = "in-progress"
             for case, operation, outcome in matrix.STEPS:
                 step = f"{case}-{operation}"
                 if step not in plan["completed_steps"]:
@@ -96,10 +97,47 @@ class BondMatrixTests(unittest.TestCase):
                         "status": "official-wallet-sequencer-finalized-candidate",
                         "operation": operation,
                         "outcome": outcome,
+                        "network": "lez-testnet",
                         "program_id": matrix.lez_bond.CANONICAL_PROGRAM_ID,
+                        "bond_id": plan["cases"][case]["bond_id"],
+                        "call": (
+                            {
+                                "message_commitment": plan["cases"][case][
+                                    "message_commitment"
+                                ],
+                                "policy_commitment": plan["cases"][case][
+                                    "policy_commitment"
+                                ],
+                                "amount": plan["cases"][case]["amount"],
+                                "deadline_ms": plan["cases"][case]["deadline_ms"],
+                            }
+                            if operation == "initialize"
+                            else {"outcome": outcome}
+                        ),
+                        "accounts": {
+                            "sender": args.sender,
+                            "owner": args.owner,
+                            "sink": args.sink,
+                            **(
+                                {
+                                    "destination": (
+                                        args.sink
+                                        if outcome == "sink-rejected"
+                                        else args.sender
+                                    )
+                                }
+                                if operation == "settle"
+                                else {}
+                            ),
+                        },
                         "execution": plan["execution"],
                         "transaction_type": "PrivacyPreserving",
                         "finality": "Finalized",
+                        "transaction": "ab" * 32,
+                        "serialized_transaction_sha256": "ab" * 32,
+                        "block": 9,
+                        "block_hash": "cd" * 32,
+                        "state": {"before": {}, "after": {}},
                     },
                 )
             matrix.lez_wallet.atomic_json(args.journal, plan)
@@ -112,6 +150,61 @@ class BondMatrixTests(unittest.TestCase):
                 with mock.patch.object(matrix.time, "time", return_value=2):
                     with self.assertRaisesRegex(matrix.MatrixError, "early"):
                         matrix.execute(args)
+
+    def test_resume_rejects_nonprefix_and_stale_candidate_bindings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = self.args(root)
+            plan = matrix.build_plan(args, 1000)
+            plan["completed_steps"] = ["acceptance-initialize"]
+            with self.assertRaisesRegex(matrix.MatrixError, "ordered prefix"):
+                matrix._validate_plan(plan, args)
+
+            plan = matrix.build_plan(args, 1000)
+            plan["cases"]["acceptance"]["amount"] = 11
+            with self.assertRaisesRegex(matrix.MatrixError, "exact release"):
+                matrix._validate_plan(plan, args)
+
+            plan = matrix.build_plan(args, 1000)
+            values = plan["cases"]["acceptance"]
+            path = Path(values["candidate_paths"]["initialize"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            matrix.lez_wallet.atomic_json(
+                path,
+                {
+                    "status": "official-wallet-sequencer-finalized-candidate",
+                    "operation": "initialize",
+                    "outcome": None,
+                    "network": "lez-testnet",
+                    "program_id": matrix.lez_bond.CANONICAL_PROGRAM_ID,
+                    "bond_id": "00" * 32,
+                    "call": {
+                        "message_commitment": values["message_commitment"],
+                        "policy_commitment": values["policy_commitment"],
+                        "amount": values["amount"],
+                        "deadline_ms": values["deadline_ms"],
+                    },
+                    "accounts": plan["accounts"],
+                    "execution": plan["execution"],
+                    "transaction_type": "PrivacyPreserving",
+                    "finality": "Finalized",
+                    "transaction": "ab" * 32,
+                    "serialized_transaction_sha256": "ab" * 32,
+                    "block": 9,
+                    "block_hash": "cd" * 32,
+                    "state": {"before": {}, "after": {}},
+                },
+            )
+            with self.assertRaisesRegex(matrix.MatrixError, "exact finalized"):
+                matrix._candidate(
+                    path,
+                    "acceptance",
+                    "initialize",
+                    None,
+                    plan["execution"],
+                    values,
+                    plan["accounts"],
+                )
 
     def test_dry_run_inspects_all_steps_without_waiting_for_expiry(self):
         with tempfile.TemporaryDirectory() as directory:

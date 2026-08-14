@@ -83,7 +83,7 @@ def build_plan(args, now_ms: int) -> dict:
             },
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "planned",
         "network": "lez-testnet",
         "program_id": lez_bond.CANONICAL_PROGRAM_ID,
@@ -101,6 +101,7 @@ def build_plan(args, now_ms: int) -> dict:
         "created_at_utc": datetime.fromtimestamp(now_ms / 1000, timezone.utc)
         .replace(microsecond=0)
         .isoformat(),
+        "created_at_ms": now_ms,
         "cases": cases,
         "completed_steps": [],
     }
@@ -119,8 +120,17 @@ def _json_object(path: Path, label: str) -> dict:
 
 
 def _validate_plan(plan: dict, args) -> None:
+    ordered_steps = [f"{case}-{operation}" for case, operation, _outcome in STEPS]
+    created_at_ms = plan.get("created_at_ms")
+    expected_cases = (
+        build_plan(args, created_at_ms)["cases"]
+        if isinstance(created_at_ms, int)
+        and not isinstance(created_at_ms, bool)
+        and created_at_ms > 0
+        else None
+    )
     if (
-        plan.get("schema_version") != 1
+        plan.get("schema_version") != 2
         or plan.get("network") != "lez-testnet"
         or plan.get("program_id") != lez_bond.CANONICAL_PROGRAM_ID
         or plan.get("release_commit") != args.release_commit
@@ -131,15 +141,21 @@ def _validate_plan(plan: dict, args) -> None:
             "risc0_prover": args.prover,
             "rayon_num_threads": args.rayon_threads,
         }
-        or set(plan.get("cases", {})) != {case for case, _outcome in CASES}
+        or plan.get("cases") != expected_cases
     ):
         raise MatrixError("matrix journal does not match this exact release and account set")
     completed = plan.get("completed_steps")
-    if not isinstance(completed, list) or len(completed) != len(set(completed)):
-        raise MatrixError("matrix journal has invalid completed steps")
-    valid_steps = {f"{case}-{operation}" for case, operation, _outcome in STEPS}
-    if not set(completed) <= valid_steps:
-        raise MatrixError("matrix journal contains an unknown completed step")
+    if not isinstance(completed, list) or completed != ordered_steps[: len(completed)]:
+        raise MatrixError("matrix journal completed steps are not an ordered prefix")
+    expected_status = (
+        "planned"
+        if not completed
+        else "completed"
+        if len(completed) == len(ordered_steps)
+        else "in-progress"
+    )
+    if plan.get("status") != expected_status:
+        raise MatrixError("matrix journal status does not match its completed steps")
 
 
 def _candidate(
@@ -148,18 +164,56 @@ def _candidate(
     operation: str,
     outcome: str | None,
     execution: dict,
+    values: dict,
+    release_accounts: dict,
 ) -> dict:
     candidate = _json_object(path, f"{case}-{operation} candidate")
+    accounts = candidate.get("accounts")
+    state = candidate.get("state")
+    expected_call = (
+        {
+            "message_commitment": values["message_commitment"],
+            "policy_commitment": values["policy_commitment"],
+            "amount": values["amount"],
+            "deadline_ms": values["deadline_ms"],
+        }
+        if operation == "initialize"
+        else {"outcome": outcome}
+    )
+    expected_destination = (
+        release_accounts["sink"] if outcome == "sink-rejected" else release_accounts["sender"]
+    )
+    transaction = str(candidate.get("transaction", ""))
     if (
         candidate.get("status") != "official-wallet-sequencer-finalized-candidate"
         or candidate.get("operation") != operation
         or candidate.get("outcome") != outcome
+        or candidate.get("network") != "lez-testnet"
         or candidate.get("program_id") != lez_bond.CANONICAL_PROGRAM_ID
+        or candidate.get("bond_id") != values["bond_id"]
+        or candidate.get("call") != expected_call
+        or not isinstance(accounts, dict)
+        or any(accounts.get(role) != account for role, account in release_accounts.items())
+        or (
+            operation == "settle"
+            and accounts.get("destination") != expected_destination
+        )
         or candidate.get("execution") != execution
         or candidate.get("transaction_type") != "PrivacyPreserving"
         or candidate.get("finality") != "Finalized"
+        or not HEX_32.fullmatch(transaction)
+        or candidate.get("serialized_transaction_sha256") != transaction
+        or not isinstance(candidate.get("block"), int)
+        or isinstance(candidate.get("block"), bool)
+        or candidate["block"] <= 0
+        or not HEX_32.fullmatch(str(candidate.get("block_hash", "")))
+        or not isinstance(state, dict)
+        or not isinstance(state.get("before"), dict)
+        or not isinstance(state.get("after"), dict)
     ):
-        raise MatrixError(f"{case}-{operation} did not produce a finalized candidate")
+        raise MatrixError(
+            f"{case}-{operation} did not produce the exact finalized candidate"
+        )
     return candidate
 
 
@@ -220,15 +274,24 @@ def execute(args) -> dict:
         plan = build_plan(args, int(time.time() * 1000))
         lez_wallet.atomic_json(args.journal, plan)
     _validate_plan(plan, args)
-    completed = set(plan["completed_steps"])
+    completed = plan["completed_steps"]
     visited = set(completed)
     execution = plan["execution"]
+    release_accounts = plan["accounts"]
     for case, operation, outcome in STEPS:
         step = f"{case}-{operation}"
         values = plan["cases"][case]
         path = Path(values["candidate_paths"][operation])
         if step in completed:
-            _candidate(path, case, operation, outcome, execution)
+            _candidate(
+                path,
+                case,
+                operation,
+                outcome,
+                execution,
+                values,
+                release_accounts,
+            )
             continue
         if operation == "settle" and f"{case}-initialize" not in visited:
             raise MatrixError(f"{case} settlement cannot run before its initialization")
@@ -249,10 +312,17 @@ def execute(args) -> dict:
         if not args.submit:
             visited.add(step)
             continue
-        _candidate(path, case, operation, outcome, execution)
-        completed.add(step)
+        _candidate(
+            path,
+            case,
+            operation,
+            outcome,
+            execution,
+            values,
+            release_accounts,
+        )
+        completed.append(step)
         visited.add(step)
-        plan["completed_steps"] = sorted(completed)
         plan["status"] = "completed" if len(completed) == len(STEPS) else "in-progress"
         plan["observed_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         lez_wallet.atomic_json(args.journal, plan)

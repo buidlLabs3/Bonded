@@ -141,6 +141,15 @@ def _validate_plan(plan: dict, args, now_ms: int) -> None:
         )
     if not isinstance(completed, list) or completed != operation_ids[: len(completed)]:
         raise ValueMatrixError("value matrix completed operations are not an ordered prefix")
+    expected_status = (
+        "planned"
+        if not completed
+        else "completed"
+        if len(completed) == len(operation_ids)
+        else "in-progress"
+    )
+    if plan.get("status") != expected_status:
+        raise ValueMatrixError("value matrix status does not match its completed operations")
 
 
 def command(args, values: dict) -> list[str]:
@@ -184,21 +193,37 @@ def command(args, values: dict) -> list[str]:
 
 def _candidate(path: Path, values: dict, execution: dict) -> dict:
     candidate = _json_object(path, f"{values['operation']} candidate")
+    transaction = str(candidate.get("transaction", ""))
+    authorization = candidate.get("authorization")
+    state = candidate.get("state")
     if (
         candidate.get("status") != "official-wallet-sequencer-finalized-candidate"
         or candidate.get("operation") != values["operation"]
         or candidate.get("network") != "lez-testnet"
         or candidate.get("profile") != values["profile"]
+        or candidate.get("program_id")
+        != lez_value.AUTHENTICATED_TRANSFER_PROGRAM_ID
         or candidate.get("accounts")
         != {"sender": values["sender"], "recipient": values["recipient"]}
         or candidate.get("amount") != values["amount"]
         or candidate.get("authorization_sha256") != values["authorization_sha256"]
+        or not isinstance(authorization, dict)
+        or authorization.get("payload_sha256")
+        != values["authorization_payload_sha256"]
         or candidate.get("trusted_signers_sha256")
         != values["trusted_signers_sha256"]
         or candidate.get("execution") != execution
         or candidate.get("transaction_type") != "PrivacyPreserving"
         or candidate.get("finality") != "Finalized"
-        or not HEX_32.fullmatch(str(candidate.get("transaction", "")))
+        or not HEX_32.fullmatch(transaction)
+        or candidate.get("serialized_transaction_sha256") != transaction
+        or not isinstance(candidate.get("block"), int)
+        or isinstance(candidate.get("block"), bool)
+        or candidate["block"] <= 0
+        or not HEX_32.fullmatch(str(candidate.get("block_hash", "")))
+        or not isinstance(state, dict)
+        or not isinstance(state.get("before"), dict)
+        or not isinstance(state.get("after"), dict)
     ):
         raise ValueMatrixError(
             f"{values['operation']} did not produce the exact finalized candidate"

@@ -220,9 +220,10 @@ boundary without weakening any chunk exit criterion:
 - Both public mutation matrices now force and journal one explicit local RISC
   Zero backend/thread profile. The three signed value operations additionally
   have a release-bound sequential runner that verifies every authorization,
-  signer map, account, amount, and finalized candidate before advancing. These
-  controls are locally verified; they do not count as any of the 11 missing
-  explorer rows.
+  signer map, account, amount, and finalized candidate before advancing. The
+  lifecycle journal also reconstructs every bond ID, call, deadline, candidate
+  path, and completed-step prefix from its release binding. These controls are
+  locally verified; they do not count as any of the 11 missing explorer rows.
 
 ---
 

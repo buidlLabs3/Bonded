@@ -103,12 +103,18 @@ class ValueMatrixTests(unittest.TestCase):
                         "operation": operation,
                         "network": "lez-testnet",
                         "profile": "settlement",
+                        "program_id": matrix.lez_value.AUTHENTICATED_TRANSFER_PROGRAM_ID,
                         "accounts": {
                             "sender": values["sender"],
                             "recipient": values["recipient"],
                         },
                         "amount": values["amount"],
                         "authorization_sha256": values["authorization_sha256"],
+                        "authorization": {
+                            "payload_sha256": values[
+                                "authorization_payload_sha256"
+                            ]
+                        },
                         "trusted_signers_sha256": values[
                             "trusted_signers_sha256"
                         ],
@@ -116,6 +122,10 @@ class ValueMatrixTests(unittest.TestCase):
                         "transaction_type": "PrivacyPreserving",
                         "finality": "Finalized",
                         "transaction": "ab" * 32,
+                        "serialized_transaction_sha256": "ab" * 32,
+                        "block": 9,
+                        "block_hash": "cd" * 32,
+                        "state": {"before": {}, "after": {}},
                     },
                 )
                 return types.SimpleNamespace(returncode=0)
