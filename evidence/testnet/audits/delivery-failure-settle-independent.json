@@ -30,7 +30,7 @@
     "three_or_more_finalized_overlaps_match": true
   },
   "component": "settlement-program",
-  "confirmation_depth": 6,
+  "confirmation_depth": 558,
   "explorer_urls": {
     "block": "https://explorer.testnet.lez.logos.co/block/8667",
     "transaction": "https://explorer.testnet.lez.logos.co/transaction/701cbe36ba88889e8b28d30318835f5da938884d93bbc3d5f3a43d949eb062d1"
@@ -46,49 +46,49 @@
   "observations": {
     "explorer_latest_finalized": {
       "bedrock_status": "Finalized",
-      "block_id": 8673,
-      "hash": "acf0d0a91661ccce7568513780e20f7eb626a62becab816a6ae568d867e81fc8",
-      "timestamp": 1786794972952
+      "block_id": 9225,
+      "hash": "5e24450a967e08cf57034045f4b0ab263e79e1e11c8638dc43108f27d186c429",
+      "timestamp": 1786828170946
     },
     "indexer_finalized_lag_blocks": 1,
     "lag_scan_complete": true,
-    "newest_sequencer_finalized_at_scan": 8674,
+    "newest_sequencer_finalized_at_scan": 9226,
     "overlapping_finalized_blocks": [
       {
-        "block_id": 8673,
+        "block_id": 9225,
         "explorer_finality": "Finalized",
-        "explorer_hash": "acf0d0a91661ccce7568513780e20f7eb626a62becab816a6ae568d867e81fc8",
+        "explorer_hash": "5e24450a967e08cf57034045f4b0ab263e79e1e11c8638dc43108f27d186c429",
         "matches": true,
         "sequencer_finality": "Finalized",
-        "sequencer_hash": "acf0d0a91661ccce7568513780e20f7eb626a62becab816a6ae568d867e81fc8"
+        "sequencer_hash": "5e24450a967e08cf57034045f4b0ab263e79e1e11c8638dc43108f27d186c429"
       },
       {
-        "block_id": 8672,
+        "block_id": 9224,
         "explorer_finality": "Finalized",
-        "explorer_hash": "6301ff5228f591e3cfccf2de9b8ecf48125d5cc5290f1747211fd0a898ab7191",
+        "explorer_hash": "918d35812d402acde841b6b8fc886f7572d4714ead5a493cde5790b61261f4e3",
         "matches": true,
         "sequencer_finality": "Finalized",
-        "sequencer_hash": "6301ff5228f591e3cfccf2de9b8ecf48125d5cc5290f1747211fd0a898ab7191"
+        "sequencer_hash": "918d35812d402acde841b6b8fc886f7572d4714ead5a493cde5790b61261f4e3"
       },
       {
-        "block_id": 8671,
+        "block_id": 9223,
         "explorer_finality": "Finalized",
-        "explorer_hash": "262aa087350af9fc7cdd4a9cd86d9a71a21cd70b88c5ebed6f75e02a52a9cb36",
+        "explorer_hash": "6750b2325cede9b06fc6739fd6e70355932ff99deee3770bfdc749a7af0f6803",
         "matches": true,
         "sequencer_finality": "Finalized",
-        "sequencer_hash": "262aa087350af9fc7cdd4a9cd86d9a71a21cd70b88c5ebed6f75e02a52a9cb36"
+        "sequencer_hash": "6750b2325cede9b06fc6739fd6e70355932ff99deee3770bfdc749a7af0f6803"
       }
     ],
     "sequencer_head": {
       "bedrock_status": "Pending",
-      "block_id": 8715,
-      "hash": "9b6deb23d90fcad9700fa067671b24d5181a8a3c817614353c1dd86cb21a9064",
-      "prev_block_hash": "a2e029d310af164eae7c702a51811ce2cbffbbc20826ee3a84f6fcf087ab6a2f",
-      "timestamp": 1786797498883,
+      "block_id": 9266,
+      "hash": "4544c09485a1ff9c6b0690cf6178a84246d634e8a44a5dd4fca6cf72700a6f03",
+      "prev_block_hash": "06691965f510f108f3947244c54b630c0c888dd2e43df838851fec3e4a9f26dc",
+      "timestamp": 1786830636363,
       "transaction_count": 1
     }
   },
-  "observed_at_utc": "2026-08-15T12:38:20+00:00",
+  "observed_at_utc": "2026-08-15T21:51:04+00:00",
   "operation": "delivery-failure-settle",
   "public_account_ids": [
     "HTP7VD4QBpyqPjpZwNiud4REmKVHRsRLPmsFeSYgEmhm",
@@ -113,6 +113,6 @@
     "observer": "independent-audit",
     "result": "pass",
     "source": "tools/lez_explorer.py",
-    "source_commit": "04584709538b36b476d792c93badd5a6b61e677d"
+    "source_commit": "85d8e426a717a065d79c1c2028d195804b8aa081"
   }
 }
