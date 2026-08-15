@@ -11,8 +11,8 @@
       ],
       "operation": "program-deployment",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/deployment-v2-block-canonical/block.json",
-        "transaction": "evidence/testnet/screenshots/deployment-v2/transaction.json"
+        "block": "evidence/testnet/screenshots/current/settlement-program-deployment/block.json",
+        "transaction": "evidence/testnet/screenshots/current/settlement-program-deployment/transaction.json"
       },
       "transaction_type": "ProgramDeployment"
     },
@@ -26,8 +26,8 @@
       ],
       "operation": "register-sender",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/register-sender/block.json",
-        "transaction": "evidence/testnet/screenshots/register-sender/transaction.json"
+        "block": "evidence/testnet/screenshots/current/register-sender/block.json",
+        "transaction": "evidence/testnet/screenshots/current/register-sender/transaction.json"
       },
       "transaction_type": "Public"
     },
@@ -41,8 +41,8 @@
       ],
       "operation": "register-owner",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/register-owner/block.json",
-        "transaction": "evidence/testnet/screenshots/register-owner/transaction.json"
+        "block": "evidence/testnet/screenshots/current/register-owner/block.json",
+        "transaction": "evidence/testnet/screenshots/current/register-owner/transaction.json"
       },
       "transaction_type": "Public"
     },
@@ -56,8 +56,8 @@
       ],
       "operation": "register-sink",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/register-sink/block.json",
-        "transaction": "evidence/testnet/screenshots/register-sink/transaction.json"
+        "block": "evidence/testnet/screenshots/current/register-sink/block.json",
+        "transaction": "evidence/testnet/screenshots/current/register-sink/transaction.json"
       },
       "transaction_type": "Public"
     },
@@ -71,8 +71,8 @@
       ],
       "operation": "fund-sender",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/fund-sender/block.json",
-        "transaction": "evidence/testnet/screenshots/fund-sender/transaction.json"
+        "block": "evidence/testnet/screenshots/current/fund-sender/block.json",
+        "transaction": "evidence/testnet/screenshots/current/fund-sender/transaction.json"
       },
       "transaction_type": "Public"
     },
@@ -86,8 +86,8 @@
       ],
       "operation": "acceptance-initialize",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/acceptance-initialize/block.json",
-        "transaction": "evidence/testnet/screenshots/acceptance-initialize/transaction.json"
+        "block": "evidence/testnet/screenshots/current/acceptance-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/current/acceptance-initialize/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -101,8 +101,8 @@
       ],
       "operation": "acceptance-settle",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/acceptance-settle/block.json",
-        "transaction": "evidence/testnet/screenshots/acceptance-settle/transaction.json"
+        "block": "evidence/testnet/screenshots/current/acceptance-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/current/acceptance-settle/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -116,8 +116,8 @@
       ],
       "operation": "rejection-initialize",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/rejection-initialize/block.json",
-        "transaction": "evidence/testnet/screenshots/rejection-initialize/transaction.json"
+        "block": "evidence/testnet/screenshots/current/rejection-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/current/rejection-initialize/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -131,8 +131,8 @@
       ],
       "operation": "rejection-settle",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/rejection-settle/block.json",
-        "transaction": "evidence/testnet/screenshots/rejection-settle/transaction.json"
+        "block": "evidence/testnet/screenshots/current/rejection-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/current/rejection-settle/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -146,8 +146,8 @@
       ],
       "operation": "expiry-initialize",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/expiry-initialize/block.json",
-        "transaction": "evidence/testnet/screenshots/expiry-initialize/transaction.json"
+        "block": "evidence/testnet/screenshots/current/expiry-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/current/expiry-initialize/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -161,8 +161,8 @@
       ],
       "operation": "expiry-settle",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/expiry-settle/block.json",
-        "transaction": "evidence/testnet/screenshots/expiry-settle/transaction.json"
+        "block": "evidence/testnet/screenshots/current/expiry-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/current/expiry-settle/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -176,8 +176,8 @@
       ],
       "operation": "delivery-failure-initialize",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/delivery-failure-initialize/block.json",
-        "transaction": "evidence/testnet/screenshots/delivery-failure-initialize/transaction.json"
+        "block": "evidence/testnet/screenshots/current/delivery-failure-initialize/block.json",
+        "transaction": "evidence/testnet/screenshots/current/delivery-failure-initialize/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -191,8 +191,8 @@
       ],
       "operation": "delivery-failure-settle",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/delivery-failure-settle/block.json",
-        "transaction": "evidence/testnet/screenshots/delivery-failure-settle/transaction.json"
+        "block": "evidence/testnet/screenshots/current/delivery-failure-settle/block.json",
+        "transaction": "evidence/testnet/screenshots/current/delivery-failure-settle/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -206,8 +206,8 @@
       ],
       "operation": "below-limit-transfer",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/below-limit-transfer/block.json",
-        "transaction": "evidence/testnet/screenshots/below-limit-transfer/transaction.json"
+        "block": "evidence/testnet/screenshots/current/below-limit-transfer/block.json",
+        "transaction": "evidence/testnet/screenshots/current/below-limit-transfer/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -221,8 +221,8 @@
       ],
       "operation": "owner-approved-transfer",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/owner-approved-transfer/block.json",
-        "transaction": "evidence/testnet/screenshots/owner-approved-transfer/transaction.json"
+        "block": "evidence/testnet/screenshots/current/owner-approved-transfer/block.json",
+        "transaction": "evidence/testnet/screenshots/current/owner-approved-transfer/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     },
@@ -236,8 +236,8 @@
       ],
       "operation": "paid-task-settlement",
       "screenshots": {
-        "block": "evidence/testnet/screenshots/paid-task-settlement/block.json",
-        "transaction": "evidence/testnet/screenshots/paid-task-settlement/transaction.json"
+        "block": "evidence/testnet/screenshots/current/paid-task-settlement/block.json",
+        "transaction": "evidence/testnet/screenshots/current/paid-task-settlement/transaction.json"
       },
       "transaction_type": "PrivacyPreserving"
     }

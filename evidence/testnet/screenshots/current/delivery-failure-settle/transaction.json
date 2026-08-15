@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "url": "https://explorer.testnet.lez.logos.co/transaction/701cbe36ba88889e8b28d30318835f5da938884d93bbc3d5f3a43d949eb062d1",
+  "expected_rendered_text": [
+    "701cbe36ba88889e8b28d30318835f5da938884d93bbc3d5f3a43d949eb062d1",
+    "Privacy-Preserving Transaction"
+  ],
+  "rendered_text_sha256": "823872479fd4402fad7db36ea1d3042c75f6aed10b335311bca268b7edbd2e50",
+  "screenshot": "transaction.png",
+  "screenshot_sha256": "98f6b822cb4b947632a5ff624cabde7c530752f179d5390297ac28717eadbb95",
+  "screenshot_bytes": 103158,
+  "dimensions": {
+    "width": 765,
+    "height": 1347
+  },
+  "browser": "Chrome/146.0.7680.164",
+  "browser_protocol_version": "1.3",
+  "fresh_profile": true,
+  "navigation_error": null,
+  "observed_at_utc": "2026-08-15T22:17:28Z"
+}

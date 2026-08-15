@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "url": "https://explorer.testnet.lez.logos.co/block/8667",
+  "expected_rendered_text": [
+    "8667",
+    "14baf3500977e3e09eeb1c8f8310721ce50e6b229c40a7abbd2fce85dca2da93",
+    "701cbe36ba88889e8b28d30318835f5da938884d93bbc3d5f3a43d949eb062d1",
+    "Finalized"
+  ],
+  "rendered_text_sha256": "ef7a04a9209fad3fc07cadc5030a58e724843d1ce8d7fe13fa6c837e2483478c",
+  "screenshot": "block.png",
+  "screenshot_sha256": "d5d10ce77e50b3015c561db6177fdb1d40df45a57a60c199cc8a50410ea1a5b0",
+  "screenshot_bytes": 105816,
+  "dimensions": {
+    "width": 765,
+    "height": 1451
+  },
+  "browser": "Chrome/146.0.7680.164",
+  "browser_protocol_version": "1.3",
+  "fresh_profile": true,
+  "navigation_error": null,
+  "observed_at_utc": "2026-08-15T22:18:29Z"
+}
