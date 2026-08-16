@@ -103,12 +103,14 @@ public:
     using Balance = std::function<std::string(const std::string&, bool)>;
     using Transfer =
         std::function<std::string(const std::string&, const std::string&, const std::string&)>;
+    using Poll = std::function<bool(const std::string&)>;
     using LoadHistory = std::function<std::vector<WalletTransfer>()>;
     using RecordTransfer = std::function<void(const WalletTransfer&)>;
 
-    LezWalletAdapter(std::string account_id, bool is_public, Balance balance,
-                     Transfer transfer, LoadHistory load_history,
-                     RecordTransfer record_transfer);
+    LezWalletAdapter(std::string account_id, bool is_public, Balance balance, Transfer transfer,
+                     Poll poll, LoadHistory load_history, RecordTransfer record_transfer,
+                     std::size_t poll_attempts = 120,
+                     std::chrono::milliseconds poll_interval = std::chrono::seconds(1));
 
     std::uint64_t balance() const override;
     std::string send(const std::string& recipient, std::uint64_t amount,
@@ -120,8 +122,11 @@ private:
     bool is_public_{false};
     Balance balance_;
     Transfer transfer_;
+    Poll poll_;
     LoadHistory load_history_;
     RecordTransfer record_transfer_;
+    std::size_t poll_attempts_{0};
+    std::chrono::milliseconds poll_interval_;
 };
 
 class LezProgramAdapter : public ProgramAdapter {
@@ -129,9 +134,12 @@ public:
     using Query = std::function<std::string(const std::string&)>;
     using Call = std::function<std::string(const std::string&, const Json&)>;
     using Deploy = std::function<std::string(const std::vector<std::uint8_t>&)>;
+    using Poll = std::function<bool(const std::string&)>;
 
     LezProgramAdapter(Query query_public, Query query_private, Call call_public,
-                      Call call_private, Deploy deploy);
+                      Call call_private, Deploy deploy, Poll poll,
+                      std::size_t poll_attempts = 120,
+                      std::chrono::milliseconds poll_interval = std::chrono::seconds(1));
 
     Json query(const std::string& program_id, const Json& parameters) const override;
     std::string call(const std::string& program_id, const std::string& instruction,
@@ -144,6 +152,9 @@ private:
     Call call_public_;
     Call call_private_;
     Deploy deploy_;
+    Poll poll_;
+    std::size_t poll_attempts_{0};
+    std::chrono::milliseconds poll_interval_;
 };
 
 } // namespace bonded

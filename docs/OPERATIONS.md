@@ -126,6 +126,10 @@ do not qualify a public transaction. The standalone 5/5 real-proof artifact is
 `evidence/standalone/official-wallet-real-proof-v2.json`; its declared scope is
 local standalone, not public testnet.
 
+The live module waits for `lez_core.poll_transaction_status` before returning a
+transaction hash. That confirms sequencer inclusion only; use the evidence gate
+above to confirm finalized explorer visibility.
+
 ## Recovery
 
 Stop only the affected profile, preserve its data directory, run `health`, and

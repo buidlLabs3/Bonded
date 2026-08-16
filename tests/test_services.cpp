@@ -465,8 +465,10 @@ void testLezWalletAdapter()
 {
     const std::string sender(64, 'a');
     const std::string recipient(64, 'b');
+    const std::string transfer_hash(64, 'c');
     std::vector<bonded::WalletTransfer> history;
     std::string encoded_amount;
+    std::size_t poll_calls = 0;
     LezWalletAdapter wallet(
         sender, false,
         [&](const std::string& account, bool is_public) {
@@ -476,22 +478,41 @@ void testLezWalletAdapter()
         [&](const std::string& from, const std::string& to, const std::string& amount) {
             check(from == sender && to == recipient, "wrong LEZ transfer accounts");
             encoded_amount = amount;
-            return Json{{"success", true}, {"tx_hash", "tx-1"}, {"error", ""}}.dump();
+            return Json{{"success", true}, {"tx_hash", transfer_hash}, {"error", ""}}.dump();
         },
+        [&](const std::string& hash) { return hash == transfer_hash && ++poll_calls == 2; },
         [&] { return history; },
-        [&](const bonded::WalletTransfer& transfer) { history.push_back(transfer); });
+        [&](const bonded::WalletTransfer& transfer) { history.push_back(transfer); }, 3,
+        std::chrono::milliseconds(0));
     check(wallet.balance() == 123, "LEZ decimal balance was not parsed");
-    check(wallet.send(recipient, 258, 1000) == "tx-1", "LEZ transfer hash was not returned");
+    check(wallet.send(recipient, 258, 1000) == transfer_hash,
+          "LEZ transfer hash was not returned");
     check(encoded_amount == "02010000000000000000000000000000",
           "LEZ transfer amount was not encoded as little-endian u128");
     check(wallet.history().size() == 1 && wallet.history().front().amount == 258,
           "LEZ transfer history was not recorded");
+    check(poll_calls == 2, "LEZ inclusion check did not retry a pending transaction");
+
+    bool pending_recorded = false;
+    LezWalletAdapter pending(
+        sender, true, [](const std::string&, bool) { return "10"; },
+        [&](const std::string&, const std::string&, const std::string&) {
+            return Json{{"success", true}, {"tx_hash", transfer_hash}, {"error", ""}}.dump();
+        },
+        [](const std::string&) { return false; },
+        [] { return std::vector<bonded::WalletTransfer>{}; },
+        [&](const bonded::WalletTransfer&) { pending_recorded = true; }, 2,
+        std::chrono::milliseconds(0));
+    expectDomainError([&] { static_cast<void>(pending.send(recipient, 1, 1)); },
+                      "unconfirmed LEZ transfer was returned as successful");
+    check(!pending_recorded, "unconfirmed LEZ transfer was added to spending history");
 
     LezWalletAdapter failing(
         sender, true, [](const std::string&, bool) { return "invalid"; },
         [](const std::string&, const std::string&, const std::string&) {
             return Json{{"success", false}, {"tx_hash", ""}, {"error", "denied"}}.dump();
         },
+        [](const std::string&) { return false; },
         [] { return std::vector<bonded::WalletTransfer>{}; },
         [](const bonded::WalletTransfer&) {});
     expectDomainError([&] { static_cast<void>(failing.balance()); },
@@ -502,6 +523,9 @@ void testLezWalletAdapter()
 
 void testLezProgramAdapter()
 {
+    const std::string public_hash(64, 'd');
+    const std::string private_hash(64, 'e');
+    const std::string deploy_hash(64, 'f');
     std::string call_mode;
     LezProgramAdapter programs(
         [](const std::string& id) {
@@ -512,25 +536,28 @@ void testLezProgramAdapter()
         },
         [&](const std::string&, const Json&) {
             call_mode = "public";
-            return Json{{"success", true}, {"tx_hash", "public-tx"}}.dump();
+            return Json{{"success", true}, {"tx_hash", public_hash}}.dump();
         },
         [&](const std::string&, const Json&) {
             call_mode = "private";
-            return Json{{"success", true}, {"tx_hash", "private-tx"}}.dump();
+            return Json{{"success", true}, {"tx_hash", private_hash}}.dump();
         },
-        [](const std::vector<std::uint8_t>& binary) {
+        [&](const std::vector<std::uint8_t>& binary) {
             check(!binary.empty(), "LEZ deployment received no program bytes");
-            return Json{{"success", true}, {"tx_hash", "deploy-tx"}}.dump();
+            return Json{{"success", true}, {"tx_hash", deploy_hash}}.dump();
+        },
+        [&](const std::string& hash) {
+            return hash == public_hash || hash == private_hash || hash == deploy_hash;
         });
     check(programs.query("account", Json{{"privacy", "public"}}).at("visibility") ==
               "public",
           "public LEZ query used the wrong adapter");
     check(programs.query("account", Json::object()).at("visibility") == "private",
           "private LEZ query used the wrong adapter");
-    check(programs.call("program", "public", Json::object()) == "public-tx" &&
+    check(programs.call("program", "public", Json::object()) == public_hash &&
               call_mode == "public",
           "public LEZ call failed");
-    check(programs.call("program", "private", Json::object()) == "private-tx" &&
+    check(programs.call("program", "private", Json::object()) == private_hash &&
               call_mode == "private",
           "private LEZ call failed");
     expectDomainError([&] { programs.call("program", "named-instruction", Json::object()); },

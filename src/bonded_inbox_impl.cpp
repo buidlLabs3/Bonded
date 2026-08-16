@@ -295,6 +295,9 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
                     return is_public ? modules().lez_core.transfer_public(from, to, amount)
                                      : modules().lez_core.transfer_private_owned(from, to, amount);
                 },
+                [this](const std::string& hash) {
+                    return modules().lez_core.poll_transaction_status(hash);
+                },
                 [database = database.get()] { return database->walletHistory(); },
                 [database = database.get()](const bonded::WalletTransfer& transfer) {
                     database->recordWalletTransfer(transfer);
@@ -328,6 +331,9 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
             },
             [this](const std::vector<std::uint8_t>& bytes) {
                 return modules().lez_core.send_program_deployment_transaction(bytes);
+            },
+            [this](const std::string& hash) {
+                return modules().lez_core.poll_transaction_status(hash);
             });
         bonded::RuntimeAdapters adapters{
             std::move(messaging_adapter), std::move(storage_adapter),

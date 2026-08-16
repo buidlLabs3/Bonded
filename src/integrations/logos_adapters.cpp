@@ -10,6 +10,7 @@
 #include <fstream>
 #include <limits>
 #include <string_view>
+#include <thread>
 
 namespace bonded {
 namespace {
@@ -163,8 +164,8 @@ std::string transactionHash(const std::string& response, const char* operation)
             throw DomainError(std::string(operation) + " failed: " + error);
         }
         const auto hash = result.value("tx_hash", "");
-        if (hash.empty()) {
-            throw DomainError(std::string(operation) + " returned an empty transaction hash");
+        if (!isAccountId(hash)) {
+            throw DomainError(std::string(operation) + " returned an invalid transaction hash");
         }
         return hash;
     } catch (const DomainError&) {
@@ -172,6 +173,27 @@ std::string transactionHash(const std::string& response, const char* operation)
     } catch (const std::exception&) {
         throw DomainError(std::string(operation) + " returned invalid JSON");
     }
+}
+
+void requireIncluded(const std::string& hash, const std::function<bool(const std::string&)>& poll,
+                     std::size_t attempts, std::chrono::milliseconds interval,
+                     const char* operation)
+{
+    for (std::size_t attempt = 0; attempt < attempts; ++attempt) {
+        try {
+            if (poll(hash)) {
+                return;
+            }
+        } catch (const std::exception&) {
+            if (attempt + 1 == attempts) {
+                throw DomainError(std::string(operation) + " inclusion check failed");
+            }
+        }
+        if (attempt + 1 < attempts && interval.count() > 0) {
+            std::this_thread::sleep_for(interval);
+        }
+    }
+    throw DomainError(std::string(operation) + " was not included before the timeout");
 }
 
 std::vector<std::uint8_t> readProgram(const std::string& binary_path)
@@ -566,14 +588,16 @@ void LogosStorageAdapter::downloadDone(const std::string& event_json)
 }
 
 LezWalletAdapter::LezWalletAdapter(std::string account_id, bool is_public, Balance balance,
-                                   Transfer transfer, LoadHistory load_history,
-                                   RecordTransfer record_transfer)
+                                   Transfer transfer, Poll poll, LoadHistory load_history,
+                                   RecordTransfer record_transfer, std::size_t poll_attempts,
+                                   std::chrono::milliseconds poll_interval)
     : account_id_(std::move(account_id)), is_public_(is_public), balance_(std::move(balance)),
-      transfer_(std::move(transfer)), load_history_(std::move(load_history)),
-      record_transfer_(std::move(record_transfer))
+      transfer_(std::move(transfer)), poll_(std::move(poll)),
+      load_history_(std::move(load_history)), record_transfer_(std::move(record_transfer)),
+      poll_attempts_(poll_attempts), poll_interval_(poll_interval)
 {
-    if (!isAccountId(account_id_) || !balance_ || !transfer_ || !load_history_ ||
-        !record_transfer_) {
+    if (!isAccountId(account_id_) || !balance_ || !transfer_ || !poll_ || !load_history_ ||
+        !record_transfer_ || poll_attempts_ == 0) {
         throw DomainError("LEZ wallet account and callbacks are required");
     }
 }
@@ -607,6 +631,7 @@ std::string LezWalletAdapter::send(const std::string& recipient, std::uint64_t a
     }
     const auto hash = transactionHash(
         transfer_(account_id_, recipient, amountLe16(amount)), "LEZ transfer");
+    requireIncluded(hash, poll_, poll_attempts_, poll_interval_, "LEZ transfer");
     record_transfer_(WalletTransfer{hash, recipient, amount, now_unix});
     return hash;
 }
@@ -617,12 +642,16 @@ std::vector<WalletTransfer> LezWalletAdapter::history() const
 }
 
 LezProgramAdapter::LezProgramAdapter(Query query_public, Query query_private, Call call_public,
-                                     Call call_private, Deploy deploy)
+                                     Call call_private, Deploy deploy, Poll poll,
+                                     std::size_t poll_attempts,
+                                     std::chrono::milliseconds poll_interval)
     : query_public_(std::move(query_public)), query_private_(std::move(query_private)),
       call_public_(std::move(call_public)), call_private_(std::move(call_private)),
-      deploy_(std::move(deploy))
+      deploy_(std::move(deploy)), poll_(std::move(poll)), poll_attempts_(poll_attempts),
+      poll_interval_(poll_interval)
 {
-    if (!query_public_ || !query_private_ || !call_public_ || !call_private_ || !deploy_) {
+    if (!query_public_ || !query_private_ || !call_public_ || !call_private_ || !deploy_ ||
+        !poll_ || poll_attempts_ == 0) {
         throw DomainError("LEZ program callbacks are required");
     }
 }
@@ -657,17 +686,26 @@ std::string LezProgramAdapter::call(const std::string& program_id,
         throw DomainError("LEZ program call is invalid");
     }
     if (instruction == "public") {
-        return transactionHash(call_public_(program_id, parameters), "LEZ public program call");
+        const auto hash =
+            transactionHash(call_public_(program_id, parameters), "LEZ public program call");
+        requireIncluded(hash, poll_, poll_attempts_, poll_interval_, "LEZ public program call");
+        return hash;
     }
     if (instruction == "private") {
-        return transactionHash(call_private_(program_id, parameters), "LEZ private program call");
+        const auto hash =
+            transactionHash(call_private_(program_id, parameters), "LEZ private program call");
+        requireIncluded(hash, poll_, poll_attempts_, poll_interval_, "LEZ private program call");
+        return hash;
     }
     throw DomainError("LEZ program instruction must be public or private");
 }
 
 std::string LezProgramAdapter::deploy(const std::string& binary_path)
 {
-    return transactionHash(deploy_(readProgram(binary_path)), "LEZ program deployment");
+    const auto hash =
+        transactionHash(deploy_(readProgram(binary_path)), "LEZ program deployment");
+    requireIncluded(hash, poll_, poll_attempts_, poll_interval_, "LEZ program deployment");
+    return hash;
 }
 
 } // namespace bonded
