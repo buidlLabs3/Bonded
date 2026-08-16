@@ -68,6 +68,7 @@ private:
 
     SkillRegistry& registry_;
     Profile profile_;
+    bool owner_controller_{false};
     std::string network_;
     std::string agent_id_;
     std::string private_key_;

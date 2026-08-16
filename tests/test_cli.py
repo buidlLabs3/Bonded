@@ -124,6 +124,13 @@ class CliTests(unittest.TestCase):
         self.package_manager = self.root / "lgpm"
         self.package_manager.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         os.chmod(self.package_manager, 0o755)
+        self.wallet_home = self.root / "wallet"
+        self.wallet_home.mkdir()
+        os.chmod(self.wallet_home, 0o700)
+        for name in ("wallet_config.json", "storage.json", "statistics.json"):
+            path = self.wallet_home / name
+            path.write_text("{}\n", encoding="utf-8")
+            os.chmod(path, 0o600)
 
     def tearDown(self):
         if (self.data / "deployment.json").exists():
@@ -142,11 +149,23 @@ class CliTests(unittest.TestCase):
         return json.loads(result.stdout if expected == 0 else result.stderr)
 
     def deploy_arguments(self, profile="inbox"):
+        manifest = self.wallet_home / "agent-account.json"
+        manifest.write_text(json.dumps({"agent": {
+            "profile": profile,
+            "kind": "private-owned",
+            "id_hex": "c" * 64,
+            "id_base58": "test-account",
+        }}), encoding="utf-8")
+        os.chmod(manifest, 0o600)
         arguments = [
             "--profile", profile, "--network", "lez-testnet",
             "--owner-public-key", "b" * 64, "--source-commit", COMMIT,
             "--module", str(self.module), "--core-binary", str(self.core),
             "--package-manager", str(self.package_manager), "--start-timeout", "5",
+            "--lez-config", str(self.wallet_home / "wallet_config.json"),
+            "--lez-storage", str(self.wallet_home / "storage.json"),
+            "--lez-statistics", str(self.wallet_home / "statistics.json"),
+            "--lez-account-id", "c" * 64, "--lez-account-kind", "private-owned",
             "--test-deployment",
         ]
         for dependency in self.dependencies:
@@ -199,11 +218,25 @@ class CliTests(unittest.TestCase):
         invoked = self.run_cli("invoke", "--skill", "meta.status", "--input", str(payload))
         self.assertEqual(invoked["result"], {"skill": "meta.status", "live": True})
 
-    def test_settlement_requires_real_wallet_inputs(self):
-        failed = self.run_cli("plan", *self.deploy_arguments("settlement"))
+    def test_every_live_profile_requires_private_wallet_inputs(self):
+        arguments = list(self.deploy_arguments("vault"))
+        arguments[arguments.index("--lez-account-kind") + 1] = "public"
+        (self.wallet_home / "storage.json").unlink()
+        failed = self.run_cli("plan", *arguments)
         self.assertFalse(failed["result"]["ready"])
         self.assertFalse(failed["result"]["checks"]["lez_wallet_files_present"])
-        self.assertFalse(failed["result"]["checks"]["lez_account_id_valid"])
+        self.assertFalse(failed["result"]["checks"]["lez_account_is_private_owned"])
+        self.assertFalse(failed["result"]["checks"]["lez_wallet_matches_profile"])
+
+    def test_plan_rejects_wallet_manifest_for_another_agent(self):
+        arguments = self.deploy_arguments("inbox")
+        manifest = self.wallet_home / "agent-account.json"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["agent"]["profile"] = "vault"
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+        plan = self.run_cli("plan", *arguments)["result"]
+        self.assertFalse(plan["ready"])
+        self.assertFalse(plan["checks"]["lez_wallet_matches_profile"])
 
     def test_teardown_is_guarded_and_stops_daemon(self):
         self.run_cli("deploy", *self.deploy_arguments())

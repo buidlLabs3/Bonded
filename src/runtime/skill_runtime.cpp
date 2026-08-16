@@ -251,6 +251,7 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
                            std::function<void(const Json&)> owner_action_required,
                            RuntimeAdapters adapters, Database* database)
     : registry_(registry), profile_(profile),
+      owner_controller_(configuration.value("owner_controller", false)),
       network_(configuration.value("network", "logos-local")),
       owner_public_key_(configuration.value("owner_public_key", "")),
       owner_action_required_(std::move(owner_action_required)),
@@ -584,7 +585,7 @@ Json SkillRuntime::status() const
     }
     Json balance = nullptr;
     std::string wallet_error;
-    const auto wallet_required = profile_ == Profile::Settlement;
+    const auto wallet_required = !owner_controller_;
     if (wallet_required) {
         try {
             balance = wallet_adapter_->balance();

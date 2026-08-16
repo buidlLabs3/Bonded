@@ -278,22 +278,20 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
         std::unique_ptr<bonded::WalletAdapter> wallet_adapter =
             std::make_unique<UnavailableWalletAdapter>();
         std::string wallet_adapter_name = "official-lez-wallet-not-configured";
-        if (profile == bonded::Profile::Settlement) {
+        if (!configuration.value("owner_controller", false)) {
             const auto account_id = configuration.at("lez_account_id").get<std::string>();
             const auto account_kind = configuration.value("lez_account_kind", "private-owned");
-            if (account_kind != "public" && account_kind != "private-owned") {
-                throw bonded::DomainError("lez_account_kind must be public or private-owned");
+            if (account_kind != "private-owned") {
+                throw bonded::DomainError("live agents require a private-owned LEZ account");
             }
-            const auto is_public = account_kind == "public";
             wallet_adapter = std::make_unique<bonded::LezWalletAdapter>(
-                account_id, is_public,
+                account_id, false,
                 [this](const std::string& account, bool public_account) {
                     return modules().lez_core.get_balance(account, public_account);
                 },
-                [this, is_public](const std::string& from, const std::string& to,
-                                  const std::string& amount) {
-                    return is_public ? modules().lez_core.transfer_public(from, to, amount)
-                                     : modules().lez_core.transfer_private_owned(from, to, amount);
+                [this](const std::string& from, const std::string& to,
+                       const std::string& amount) {
+                    return modules().lez_core.transfer_private_owned(from, to, amount);
                 },
                 [this](const std::string& hash) {
                     return modules().lez_core.poll_transaction_status(hash);
@@ -403,6 +401,7 @@ std::string BondedInboxImpl::initializeOwnerController()
         }
         return initialize(Json{{"profile", "inbox"},
                                {"network", "lez-testnet"},
+                               {"owner_controller", true},
                                {"data_directory", (root / "bonded").string()}}
                               .dump());
     } catch (const std::exception& error) {

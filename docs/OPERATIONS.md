@@ -26,18 +26,21 @@ Nix result links beneath the chosen output directory.
 scripts/build-live-stack.sh build/live-stack
 ```
 
-Deploy three isolated profiles. The wallet directory must remain outside the
-repository and contain `wallet_config.json`, `storage.json`, and
-`statistics.json`.
+Deploy three isolated profiles. Each profile needs a distinct private-owned LEZ
+account in a distinct wallet directory outside the repository; wallet files
+cannot be shared by concurrently running Core processes.
 
 ```bash
 scripts/manage-live-agents.sh deploy \
   --artifacts build/live-stack \
   --data-root /absolute/private/path/to/agents \
   --owner-public-key "$OWNER_PUBLIC_KEY" \
-  --wallet-home "$LEE_WALLET_HOME_DIR" \
-  --lez-account-id "$LEZ_ACCOUNT_ID" \
-  --lez-account-kind private-owned
+  --wallet-home-inbox "$INBOX_WALLET_HOME" \
+  --lez-account-id-inbox "$INBOX_ACCOUNT_ID_HEX" \
+  --wallet-home-vault "$VAULT_WALLET_HOME" \
+  --lez-account-id-vault "$VAULT_ACCOUNT_ID_HEX" \
+  --wallet-home-settlement "$SETTLEMENT_WALLET_HOME" \
+  --lez-account-id-settlement "$SETTLEMENT_ACCOUNT_ID_HEX"
 ```
 
 Each profile receives its own runtime identity, SQLite database, Storage data,
@@ -69,6 +72,33 @@ python3 tools/lez_wallet.py check-wallet \
   --wallet-source "$BONDED_LEZ_SOURCE" \
   --wallet-home "$LEE_WALLET_HOME_DIR"
 ```
+
+Create and initialize the three shielded agent wallets one at a time. Wallet
+creation never overwrites a directory and suppresses native recovery/key output;
+store each recovery file separately before continuing. The private claim both
+initializes and funds the named agent account with a finalized LEZ transaction.
+
+```bash
+export AGENT_WALLET_ROOT=/absolute/private/path/to/agent-wallets
+for profile in inbox vault settlement; do
+  BONDED_LEZ_BOOTSTRAP=YES python3 tools/lez_wallet_bootstrap.py \
+    --wallet-source "$BONDED_LEZ_SOURCE" \
+    --wallet-home "$AGENT_WALLET_ROOT/$profile" \
+    --agent-profile "$profile" --create
+  RISC0_DEV_MODE=0 BONDED_LEZ_SUBMIT=YES \
+  python3 tools/lez_wallet_provision.py \
+    --wallet-source "$BONDED_LEZ_SOURCE" \
+    --wallet-home "$AGENT_WALLET_ROOT/$profile" \
+    --agent-profile "$profile" --submit --timeout 43200 \
+    --prover ipc --rayon-threads 2 \
+    --evidence "$AGENT_WALLET_ROOT/$profile/provisioning.json" \
+    initialize-agent
+done
+```
+
+Use each manifest's public `agent.id_hex` value for the matching
+`--lez-account-id-*` deployment argument. Do not expose recovery phrases,
+wallet storage, or private keys in logs or repository evidence.
 
 The corrected settlement deployment is transaction
 `fc88b2bad2b51026fb97c6cc8b4943ead59f8a3cc0e515f9f058f9e49fb11ea9`

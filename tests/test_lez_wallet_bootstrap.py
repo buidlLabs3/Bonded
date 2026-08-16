@@ -52,6 +52,25 @@ class WalletBootstrapTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 bootstrap.write_private(path, b"overwrite\n")
 
+    def test_agent_account_manifest_uses_private_owned_hex_identity(self):
+        account = bootstrap.lez_bond.FfiBytes32.from_bytes(bytes(range(32)))
+        agent = bootstrap._agent_account("vault", account, "base58-account")
+        self.assertEqual(agent["profile"], "vault")
+        self.assertEqual(agent["kind"], "private-owned")
+        self.assertEqual(agent["id_hex"], bytes(range(32)).hex())
+        self.assertEqual(agent["id_base58"], "base58-account")
+        with self.assertRaisesRegex(bootstrap.BootstrapError, "agent profile"):
+            bootstrap._agent_account("other", account, "base58-account")
+
+    def test_parser_accepts_one_named_agent_profile(self):
+        args = bootstrap.parser().parse_args([
+            "--wallet-source", "/tmp/source",
+            "--wallet-home", "/tmp/wallet",
+            "--agent-profile", "settlement",
+            "--create",
+        ])
+        self.assertEqual(args.agent_profile, "settlement")
+
     def test_creation_requires_both_explicit_gates(self):
         args = type("Args", (), {"create": False})()
         with self.assertRaisesRegex(bootstrap.BootstrapError, "requires"):

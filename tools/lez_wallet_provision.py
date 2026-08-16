@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Register and fund disposable public identities with the pinned LEZ wallet FFI."""
+"""Provision public test identities or one private agent with the pinned LEZ wallet FFI."""
 
 import argparse
 import ctypes
@@ -31,6 +31,7 @@ lez_bond = _load_tool("lez_bond")
 PINATA_ACCOUNT = "EfQhKQAkX2FJiwNii2WFQsGndjvF1Mzd7RuVe7QdPLw7"
 PINATA_PRIZE = 150
 ROLES = ("sender", "owner", "sink")
+AGENT_PROFILES = ("inbox", "vault", "settlement")
 
 
 class ProvisionError(RuntimeError):
@@ -59,6 +60,36 @@ def load_public_accounts(wallet_home: Path) -> dict[str, str]:
     if len(set(accounts.values())) != len(ROLES):
         raise ProvisionError("public-account manifest role accounts must be distinct")
     return accounts
+
+
+def load_agent_account(wallet_home: Path, expected_profile: str) -> dict:
+    manifest = wallet_home / "agent-account.json"
+    if manifest.is_symlink() or not manifest.is_file():
+        raise ProvisionError("private agent-account manifest is missing")
+    if stat.S_IMODE(manifest.stat().st_mode) != 0o600:
+        raise ProvisionError("agent-account manifest permissions must be exactly 0600")
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ProvisionError(f"could not read agent-account manifest: {exc}") from exc
+    agent = document.get("agent")
+    if not isinstance(agent, dict):
+        raise ProvisionError("agent-account manifest is invalid")
+    if agent.get("profile") != expected_profile or agent.get("kind") != "private-owned":
+        raise ProvisionError("agent-account manifest profile or kind does not match")
+    account_hex = agent.get("id_hex")
+    account_base58 = agent.get("id_base58")
+    if not isinstance(account_hex, str) or not lez_bond.HEX_32.fullmatch(account_hex):
+        raise ProvisionError("agent account ID must be 32-byte hex")
+    expected_base58 = lez_bond.lez_explorer.base58_encode(bytes.fromhex(account_hex))
+    if account_base58 != expected_base58:
+        raise ProvisionError("agent account hex and base58 IDs do not match")
+    return {
+        "profile": expected_profile,
+        "kind": "private-owned",
+        "id_hex": account_hex.lower(),
+        "id_base58": account_base58,
+    }
 
 
 def solve_pinata(data: bytes) -> tuple[int, dict]:
@@ -101,6 +132,26 @@ class ProvisionWallet(lez_bond.OfficialWalletFfi):
             ctypes.POINTER(FfiTransferResult),
         ]
         lib.wallet_ffi_claim_pinata.restype = ctypes.c_int
+        private_symbols = (
+            "wallet_ffi_get_account_private",
+            "wallet_ffi_claim_pinata_private_owned_not_initialized",
+        )
+        self.private_supported = all(hasattr(lib, symbol) for symbol in private_symbols)
+        if self.private_supported:
+            lib.wallet_ffi_get_account_private.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(lez_bond.FfiBytes32),
+                ctypes.POINTER(lez_bond.FfiAccount),
+            ]
+            lib.wallet_ffi_get_account_private.restype = ctypes.c_int
+            lib.wallet_ffi_claim_pinata_private_owned_not_initialized.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(lez_bond.FfiBytes32),
+                ctypes.POINTER(lez_bond.FfiBytes32),
+                ctypes.POINTER(amount),
+                ctypes.POINTER(FfiTransferResult),
+            ]
+            lib.wallet_ffi_claim_pinata_private_owned_not_initialized.restype = ctypes.c_int
         lib.wallet_ffi_free_transfer_result.argtypes = [ctypes.POINTER(FfiTransferResult)]
         lib.wallet_ffi_free_transfer_result.restype = None
 
@@ -151,6 +202,46 @@ class ProvisionWallet(lez_bond.OfficialWalletFfi):
             )
         )
 
+    def private_snapshot(self, account_id: lez_bond.FfiBytes32) -> dict:
+        if not self.private_supported:
+            raise ProvisionError("pinned official wallet FFI does not support private agents")
+        account = lez_bond.FfiAccount()
+        self._require(
+            self.lib.wallet_ffi_get_account_private(
+                self.handle, ctypes.byref(account_id), ctypes.byref(account)
+            ),
+            "private account query",
+        )
+        try:
+            data = ctypes.string_at(account.data, account.data_len) if account.data_len else b""
+            return {
+                "account_id": account_id.as_bytes().hex(),
+                "program_owner": lez_bond.program_id_to_hex(account.program_owner),
+                "balance": str(int.from_bytes(bytes(account.balance.data), "little")),
+                "nonce": str(int.from_bytes(bytes(account.nonce.data), "little")),
+                "data_size": len(data),
+                "data_sha256": hashlib.sha256(data).hexdigest(),
+            }
+        finally:
+            self.lib.wallet_ffi_free_account_data(ctypes.byref(account))
+
+    def claim_private_not_initialized(
+        self, account: lez_bond.FfiBytes32, solution: int
+    ) -> str:
+        if not self.private_supported:
+            raise ProvisionError("pinned official wallet FFI does not support private agents")
+        pinata = self.account(PINATA_ACCOUNT)
+        value = (ctypes.c_uint8 * 16).from_buffer_copy(solution.to_bytes(16, "little"))
+        return self._transfer_hash(
+            lambda result: self.lib.wallet_ffi_claim_pinata_private_owned_not_initialized(
+                self.handle,
+                ctypes.byref(pinata),
+                ctypes.byref(account),
+                ctypes.byref(value),
+                result,
+            )
+        )
+
 
 def _candidate(path: Path) -> dict:
     if not path.exists():
@@ -171,11 +262,117 @@ def _operation(evidence: dict, operation_id: str):
     return matches[0] if matches else None
 
 
-def execute(args) -> dict:
+def execute_agent(args) -> dict:
     if not args.submit or os.environ.get("BONDED_LEZ_SUBMIT") != "YES":
         raise ProvisionError("provisioning requires --submit and BONDED_LEZ_SUBMIT=YES")
     if os.environ.get("RISC0_DEV_MODE") != "0":
         raise ProvisionError("RISC0_DEV_MODE must be exactly 0")
+    execution = lez_bond.configure_execution(args)
+    profile = lez_wallet.load_network_profile(args.profile.resolve(strict=True))
+    provenance = lez_wallet.verify_source(args.wallet_source, profile)
+    wallet_home = args.wallet_home.resolve(strict=True)
+    wallet = lez_wallet.verify_wallet_home(wallet_home, profile)
+    agent = load_agent_account(wallet_home, args.agent_profile)
+    evidence = _candidate(args.evidence)
+    identity = {
+        "network": profile["network"],
+        "release_commit": profile["release_commit"],
+        "wallet_source_commit": provenance["source_commit"],
+        "execution": execution,
+        "agent": agent,
+    }
+    for key, value in identity.items():
+        if key in evidence and evidence[key] != value:
+            raise ProvisionError(f"provisioning evidence {key} does not match this run")
+        evidence[key] = value
+
+    operation_id = f"initialize-agent:{args.agent_profile}"
+    journaled = _operation(evidence, operation_id)
+    if journaled is not None and journaled.get("status") == "finalized":
+        return evidence
+    if journaled is not None and journaled.get("status") == "submitting":
+        raise ProvisionError(
+            f"provisioning operation {operation_id} was interrupted during submission; "
+            "reconcile wallet/sequencer state before any retry"
+        )
+    if journaled is not None and journaled.get("status") != "submitted":
+        raise ProvisionError(f"provisioning journal entry has invalid status: {operation_id}")
+
+    ffi = ProvisionWallet(provenance, wallet)
+    try:
+        account = lez_bond.FfiBytes32.from_bytes(bytes.fromhex(agent["id_hex"]))
+        if journaled is None:
+            before = ffi.private_snapshot(account)
+            if before["balance"] != "0":
+                raise ProvisionError("agent account is already funded but has no journal")
+            pinata = ffi.account(PINATA_ACCOUNT)
+            pinata_before = ffi.snapshot(pinata)
+            solution, pow_evidence = solve_pinata(ffi.account_data(pinata))
+            journaled = {
+                "id": operation_id,
+                "status": "submitting",
+                "operation": "private-pinata-initialize-and-fund",
+                "agent": agent,
+                "state": {"before": before},
+                "pinata": {
+                    "account": PINATA_ACCOUNT,
+                    "state": {"before": pinata_before},
+                    "proof_of_work": pow_evidence,
+                    "prize": str(PINATA_PRIZE),
+                },
+                "prepared_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            }
+            evidence["operations"].append(journaled)
+            lez_wallet.atomic_json(args.evidence, evidence)
+            with lez_bond.captured_native_output() as captured:
+                transaction = ffi.claim_private_not_initialized(account, solution)
+            journaled.update({
+                "status": "submitted",
+                "captured_native_output": captured,
+                "transaction": transaction,
+                "submitted_at_utc": datetime.now(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat(),
+            })
+            lez_wallet.atomic_json(args.evidence, evidence)
+
+        inclusion = lez_bond.wait_for_finalized(
+            journaled["transaction"], args.timeout, "PrivacyPreserving"
+        )
+        after = ffi.private_snapshot(account)
+        before = journaled["state"]["before"]
+        pinata_after = ffi.snapshot(ffi.account(PINATA_ACCOUNT))
+        pinata_before = journaled["pinata"]["state"]["before"]
+        if after["program_owner"] != lez_bond.AUTHENTICATED_TRANSFER_PROGRAM_ID:
+            raise ProvisionError("private claim did not initialize the authenticated-transfer owner")
+        if int(after["balance"]) != int(before["balance"]) + PINATA_PRIZE:
+            raise ProvisionError("private claim did not credit the exact prize")
+        if int(pinata_after["balance"]) != int(pinata_before["balance"]) - PINATA_PRIZE:
+            raise ProvisionError("private claim did not debit the exact prize")
+        journaled["pinata"]["state"]["after"] = pinata_after
+        journaled.update(inclusion)
+        journaled["state"]["after"] = after
+        journaled["status"] = "finalized"
+        journaled["observed_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        evidence["status"] = "provisioned"
+        evidence["verification_boundary"] = (
+            "Official-wallet privacy-preserving submission, sequencer finality, and "
+            "authoritative wallet state only; explorer promotion is separate."
+        )
+        lez_wallet.atomic_json(args.evidence, evidence)
+        return evidence
+    finally:
+        ffi.close()
+
+
+def execute(args) -> dict:
+    if args.operation == "initialize-agent":
+        return execute_agent(args)
+    if not args.submit or os.environ.get("BONDED_LEZ_SUBMIT") != "YES":
+        raise ProvisionError("provisioning requires --submit and BONDED_LEZ_SUBMIT=YES")
+    if os.environ.get("RISC0_DEV_MODE") != "0":
+        raise ProvisionError("RISC0_DEV_MODE must be exactly 0")
+    execution = lez_bond.configure_execution(args)
     profile = lez_wallet.load_network_profile(args.profile.resolve(strict=True))
     provenance = lez_wallet.verify_source(args.wallet_source, profile)
     wallet_home = args.wallet_home.resolve(strict=True)
@@ -186,6 +383,7 @@ def execute(args) -> dict:
         "network": profile["network"],
         "release_commit": profile["release_commit"],
         "wallet_source_commit": provenance["source_commit"],
+        "execution": execution,
         "accounts": accounts,
     }
     for key, value in identity.items():
@@ -294,19 +492,22 @@ def execute(args) -> dict:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Provision official LEZ public testnet identities")
+    result = argparse.ArgumentParser(description="Provision official LEZ testnet identities")
     result.add_argument("--profile", type=Path, default=lez_wallet.DEFAULT_PROFILE)
     result.add_argument("--wallet-source", type=Path, required=True)
     result.add_argument("--wallet-home", type=Path, required=True)
-    result.add_argument("--role", choices=ROLES, required=True)
+    result.add_argument("--role", choices=ROLES)
+    result.add_argument("--agent-profile", choices=AGENT_PROFILES)
     result.add_argument("--submit", action="store_true")
     result.add_argument("--timeout", type=float, default=1800)
+    result.add_argument("--prover", choices=("ipc", "actor"), default="ipc")
+    result.add_argument("--rayon-threads", type=int, default=2)
     result.add_argument(
         "--evidence",
         type=Path,
         default=REPO_ROOT / "evidence/testnet/candidates/wallet-provisioning.json",
     )
-    result.add_argument("operation", choices=("register", "fund"))
+    result.add_argument("operation", choices=("register", "fund", "initialize-agent"))
     return result
 
 
@@ -315,6 +516,11 @@ def main() -> int:
         args = parser().parse_args()
         if args.timeout <= 0:
             raise ProvisionError("timeout must be positive")
+        if args.operation == "initialize-agent":
+            if not args.agent_profile or args.role:
+                raise ProvisionError("initialize-agent requires --agent-profile and no --role")
+        elif not args.role or args.agent_profile:
+            raise ProvisionError("public register/fund requires --role and no --agent-profile")
         if args.operation == "fund" and args.role != "sender":
             raise ProvisionError("only the sender role is funded for the lifecycle matrix")
         print(json.dumps(execute(args), sort_keys=True))

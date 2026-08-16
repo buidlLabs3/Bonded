@@ -15,6 +15,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+AGENT_PROFILES = ("inbox", "vault", "settlement")
 
 
 def _load_tool(name: str):
@@ -81,7 +82,7 @@ def write_private(path: Path, data: bytes) -> None:
         raise BootstrapError(f"private file permissions are not 0600: {path}")
 
 
-def _bind(lib) -> None:
+def _bind(lib, private_agent: bool = False) -> None:
     lib.wallet_ffi_create_new.argtypes = [
         ctypes.c_char_p,
         ctypes.c_char_p,
@@ -94,6 +95,14 @@ def _bind(lib) -> None:
         ctypes.POINTER(lez_bond.FfiBytes32),
     ]
     lib.wallet_ffi_create_account_public.restype = ctypes.c_int
+    if private_agent:
+        if not hasattr(lib, "wallet_ffi_create_account_private"):
+            raise BootstrapError("pinned official wallet FFI does not support private accounts")
+        lib.wallet_ffi_create_account_private.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(lez_bond.FfiBytes32),
+        ]
+        lib.wallet_ffi_create_account_private.restype = ctypes.c_int
     lib.wallet_ffi_account_id_to_base58.argtypes = [
         ctypes.POINTER(lez_bond.FfiBytes32)
     ]
@@ -121,6 +130,17 @@ def _display_account(lib, value: lez_bond.FfiBytes32) -> str:
         lib.wallet_ffi_free_string(output)
 
 
+def _agent_account(profile: str, account: lez_bond.FfiBytes32, display: str) -> dict:
+    if profile not in AGENT_PROFILES:
+        raise BootstrapError("agent profile must be inbox, vault, or settlement")
+    return {
+        "profile": profile,
+        "kind": "private-owned",
+        "id_hex": account.as_bytes().hex(),
+        "id_base58": display,
+    }
+
+
 def create_wallet(args) -> dict:
     if not args.create or os.environ.get("BONDED_LEZ_BOOTSTRAP") != "YES":
         raise BootstrapError("wallet creation requires --create and BONDED_LEZ_BOOTSTRAP=YES")
@@ -140,7 +160,10 @@ def create_wallet(args) -> dict:
         storage = staging / "storage.json"
         statistics = staging / "statistics.json"
         recovery = staging / "recovery-phrase.txt"
-        account_manifest = staging / "public-accounts.json"
+        agent_profile = getattr(args, "agent_profile", None)
+        account_manifest = staging / (
+            "agent-account.json" if agent_profile else "public-accounts.json"
+        )
         write_private(
             config,
             (json.dumps(wallet_config(profile), indent=2, sort_keys=True) + "\n").encode(
@@ -148,7 +171,7 @@ def create_wallet(args) -> dict:
             ),
         )
         lib = ctypes.CDLL(provenance["ffi_library"], mode=ctypes.RTLD_LOCAL)
-        _bind(lib)
+        _bind(lib, private_agent=bool(agent_profile))
         with lez_bond.captured_native_output() as captured:
             output = lib.wallet_ffi_create_new(
                 os.fsencode(config),
@@ -167,17 +190,30 @@ def create_wallet(args) -> dict:
             finally:
                 mnemonic[:] = bytes(len(mnemonic))
             accounts = {}
-            for role in ("sender", "owner", "sink"):
+            agent_account = None
+            if agent_profile:
                 account = lez_bond.FfiBytes32()
                 _require(
-                    lib.wallet_ffi_create_account_public(
+                    lib.wallet_ffi_create_account_private(
                         output.wallet, ctypes.byref(account)
                     ),
-                    f"{role} account creation",
+                    f"{agent_profile} private account creation",
                 )
-                accounts[role] = _display_account(lib, account)
-            if len(set(accounts.values())) != 3:
-                raise BootstrapError("official wallet generated duplicate role accounts")
+                agent_account = _agent_account(
+                    agent_profile, account, _display_account(lib, account)
+                )
+            else:
+                for role in ("sender", "owner", "sink"):
+                    account = lez_bond.FfiBytes32()
+                    _require(
+                        lib.wallet_ffi_create_account_public(
+                            output.wallet, ctypes.byref(account)
+                        ),
+                        f"{role} account creation",
+                    )
+                    accounts[role] = _display_account(lib, account)
+                if len(set(accounts.values())) != 3:
+                    raise BootstrapError("official wallet generated duplicate role accounts")
             _require(lib.wallet_ffi_save(output.wallet), "wallet save")
 
         for path in (config, storage, statistics):
@@ -187,8 +223,11 @@ def create_wallet(args) -> dict:
             "schema_version": 1,
             "network": profile["network"],
             "source_commit": provenance["source_commit"],
-            "accounts": accounts,
         }
+        if agent_profile:
+            manifest["agent"] = agent_account
+        else:
+            manifest["accounts"] = accounts
         write_private(
             account_manifest,
             (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8"),
@@ -199,12 +238,10 @@ def create_wallet(args) -> dict:
         verified = lez_wallet.verify_wallet_home(target, profile)
         recovery = target / recovery.name
         account_manifest = target / account_manifest.name
-        return {
+        result = {
             "status": "created-not-registered-or-funded",
             "wallet": verified,
             "recovery_file": str(recovery),
-            "public_account_manifest": str(account_manifest),
-            "accounts": accounts,
             "official_wallet": {
                 "source_commit": provenance["source_commit"],
                 "ffi_library_sha256": provenance["ffi_library_sha256"],
@@ -215,6 +252,17 @@ def create_wallet(args) -> dict:
                 "0700 and recovery, storage, config, statistics, and account manifest are 0600."
             ),
         }
+        if agent_profile:
+            result.update({
+                "agent_account_manifest": str(account_manifest),
+                "agent": agent_account,
+            })
+        else:
+            result.update({
+                "public_account_manifest": str(account_manifest),
+                "accounts": accounts,
+            })
+        return result
     finally:
         if lib is not None and mnemonic_owned:
             lib.wallet_ffi_free_string(output.mnemonic)
@@ -229,6 +277,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--profile", type=Path, default=lez_wallet.DEFAULT_PROFILE)
     result.add_argument("--wallet-source", type=Path, required=True)
     result.add_argument("--wallet-home", type=Path, required=True)
+    result.add_argument("--agent-profile", choices=AGENT_PROFILES)
     result.add_argument("--create", action="store_true")
     return result
 
