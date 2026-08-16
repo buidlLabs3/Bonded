@@ -18,7 +18,8 @@ class AssetTests(unittest.TestCase):
         qml = entry.read_text(encoding="utf-8")
         for marker in (
             "pendingMessageList", "taskList", "approvalList", "rejectionConfirmation",
-            "offline", "loading", "Accessible.name", "rejectionSink",
+            "offline", "loading", "Accessible.name", "rejectionSink", "vaultPlaintext",
+            "vaultAddress", "observedAccount", "skill.invoke", "toolResult",
         ):
             self.assertIn(marker, qml)
         self.assertNotIn("private_key", qml)

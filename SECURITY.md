@@ -18,5 +18,9 @@ Paid Agent Cards contain only LEZ public receiving material (account ID, NPK,
 and VPK). Wallet recovery material, spending keys, and wallet files are never
 published or sent over the A2A channel.
 
+The Basecamp Tools channel is allowlisted to encrypted Storage operations,
+read-only LEZ account queries, and metadata. It cannot invoke wallet transfers,
+program calls, or program deployment.
+
 The project is experimental testnet software and is not approved for production
 funds or identities. Only the latest tagged release is supported.

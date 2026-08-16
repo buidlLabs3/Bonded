@@ -21,6 +21,7 @@ Page {
     property string selectedAgentId: ""
     property string pendingRequestId: ""
     property string controllerPublicKey: ""
+    property string lastToolResult: ""
     property string lastError: ""
     readonly property bool bridgeAvailable: typeof logos !== "undefined"
 
@@ -72,6 +73,8 @@ Page {
                         pendingMessages = remoteState.messages || []
                         activeTasks = remoteState.tasks || []
                         approvals = remoteState.approvals || []
+                    } else if (response.result) {
+                        lastToolResult = JSON.stringify(response.result, null, 2)
                     }
                     break
                 }
@@ -157,6 +160,15 @@ Page {
         }
     }
 
+    function invokeOwnerSkill(skill, input) {
+        try {
+            lastToolResult = ""
+            sendOwnerCommand("skill.invoke", {"skill": skill, "input": input})
+        } catch (error) {
+            lastError = error.message
+        }
+    }
+
     function taskSkill(task) {
         return task.metadata && task.metadata.logos ? task.metadata.logos.skill : ""
     }
@@ -236,6 +248,7 @@ Page {
             TabButton { text: qsTr("Inbox") }
             TabButton { text: qsTr("Tasks") }
             TabButton { text: qsTr("Approvals") }
+            TabButton { text: qsTr("Tools") }
             TabButton { text: qsTr("Settings") }
         }
 
@@ -340,6 +353,90 @@ Page {
                     Button {
                         text: qsTr("Approve")
                         onClicked: root.decideSpendingBackend(approvalDelegate.modelData.id, true)
+                    }
+                }
+            }
+
+            ScrollView {
+                contentWidth: availableWidth
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Label { text: qsTr("Private file vault"); font.bold: true }
+                    TextField {
+                        id: vaultLabel
+                        objectName: "vaultLabel"
+                        placeholderText: qsTr("File label")
+                        Layout.fillWidth: true
+                        Accessible.name: placeholderText
+                    }
+                    TextArea {
+                        id: vaultPlaintext
+                        objectName: "vaultPlaintext"
+                        placeholderText: qsTr("Private content")
+                        wrapMode: TextEdit.Wrap
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 96
+                        Accessible.name: placeholderText
+                    }
+                    Button {
+                        text: qsTr("Encrypt and upload")
+                        enabled: vaultLabel.text.length > 0 && vaultPlaintext.text.length > 0
+                        onClicked: root.invokeOwnerSkill("storage.upload", {
+                            "label": vaultLabel.text,
+                            "plaintext": vaultPlaintext.text
+                        })
+                    }
+                    TextField {
+                        id: vaultAddress
+                        objectName: "vaultAddress"
+                        placeholderText: qsTr("Storage address")
+                        Layout.fillWidth: true
+                        Accessible.name: placeholderText
+                    }
+                    Button {
+                        text: qsTr("Download and decrypt")
+                        enabled: vaultAddress.text.length > 0
+                        onClicked: root.invokeOwnerSkill("storage.download", {
+                            "address": vaultAddress.text
+                        })
+                    }
+
+                    Label { text: qsTr("LEZ account observation"); font.bold: true }
+                    TextField {
+                        id: observedAccount
+                        objectName: "observedAccount"
+                        placeholderText: qsTr("32-byte account ID")
+                        Layout.fillWidth: true
+                        Accessible.name: placeholderText
+                    }
+                    ComboBox {
+                        id: observationPrivacy
+                        objectName: "observationPrivacy"
+                        model: [qsTr("Private"), qsTr("Public")]
+                        Accessible.name: qsTr("Account privacy")
+                    }
+                    Button {
+                        text: qsTr("Observe account")
+                        enabled: observedAccount.text.length === 64
+                        onClicked: root.invokeOwnerSkill("program.query", {
+                            "program_id": observedAccount.text,
+                            "parameters": {
+                                "privacy": observationPrivacy.currentIndex === 0
+                                           ? "private" : "public"
+                            }
+                        })
+                    }
+                    TextArea {
+                        objectName: "toolResult"
+                        text: root.lastToolResult
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.WrapAnywhere
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 140
+                        Accessible.name: qsTr("Tool result")
                     }
                 }
             }

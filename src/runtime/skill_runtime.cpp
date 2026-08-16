@@ -673,6 +673,17 @@ Json SkillRuntime::updateOwnerConfiguration(const Json& changes,
     return configuration_.updateAuthenticated(changes, expected_revision);
 }
 
+Json SkillRuntime::invokeOwnerSkill(const std::string& skill, const Json& input)
+{
+    static const std::set<std::string> owner_skills{
+        "storage.upload", "storage.download", "storage.list",
+        "program.query", "meta.skills", "meta.status"};
+    if (!owner_skills.contains(skill)) {
+        throw DomainError("skill is not allowed on the owner channel");
+    }
+    return registry_.invoke(skill, profile_, input);
+}
+
 std::string SkillRuntime::ownerRequestTopic(const std::string& agent_id)
 {
     return "/bonded-inbox/1/owner/" + Crypto::sha256(agent_id).substr(0, 32) + "/request";

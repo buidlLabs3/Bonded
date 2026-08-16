@@ -17,6 +17,12 @@ nix run .#basecamp-preview-smoke
 Run the fixture-backed Basecamp UI with `nix run .#basecamp-preview`. It is an
 interaction test, not a wallet or testnet client.
 
+Run the live owner app with `nix run .#basecamp`. Copy the controller public key
+shown in Settings and use it as `OWNER_PUBLIC_KEY` when deploying the agents
+below. After their cards are discovered, select the Vault agent in Tools to
+upload/download encrypted content, or the Settlement agent to inspect a LEZ
+account. These commands and their replies use the encrypted owner channel.
+
 ## Headless Deployment
 
 Build the pinned official stack. The command runs sequentially and writes only

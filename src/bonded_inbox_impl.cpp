@@ -7,7 +7,6 @@
 #include "storage/database.h"
 #include "security/crypto.h"
 #include "logos_sdk.h"
-#include "logos_codec.h"
 
 #include <algorithm>
 #include <chrono>
@@ -579,6 +578,11 @@ Json BondedInboxImpl::executeOwnerCommand(const std::string& action,
         return skill_runtime_->updateOwnerConfiguration(
             payload.at("changes"),
             payload.at("expected_revision").get<std::uint64_t>());
+    }
+    if (action == "skill.invoke") {
+        return skill_runtime_->invokeOwnerSkill(
+            payload.at("skill").get<std::string>(),
+            payload.value("input", Json::object()));
     }
     throw bonded::DomainError("unsupported owner channel action");
 }

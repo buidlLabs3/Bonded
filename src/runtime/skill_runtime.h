@@ -48,6 +48,7 @@ public:
     Json decideSpending(const std::string& proposal_id, bool approved,
                         std::uint64_t now_unix);
     Json updateOwnerConfiguration(const Json& changes, std::uint64_t expected_revision);
+    Json invokeOwnerSkill(const std::string& skill, const Json& input);
     void setOwnerCommandHandler(OwnerCommand handler);
     Json ownerAgents(std::uint64_t now_unix) const;
     Json requestOwnerCommand(const std::string& target_agent_id,

@@ -62,6 +62,17 @@ void check(bool condition, const std::string& message)
     }
 }
 
+template <typename Callable>
+void expectFailure(Callable callable, const std::string& message)
+{
+    try {
+        callable();
+    } catch (const std::exception&) {
+        return;
+    }
+    throw std::runtime_error(message);
+}
+
 } // namespace
 
 int main()
@@ -91,6 +102,20 @@ int main()
         const auto downloaded = registry.invoke(
             "storage.download", Profile::Vault, Json{{"address", uploaded.at("address")}});
         check(downloaded.at("plaintext") == "private", "storage skill round trip failed");
+        const auto owner_uploaded = runtime.invokeOwnerSkill(
+            "storage.upload", Json{{"plaintext", "owner-private"}, {"label", "owner-note"}});
+        check(runtime.invokeOwnerSkill(
+                  "storage.download", Json{{"address", owner_uploaded.at("address")}})
+                  .at("plaintext") == "owner-private",
+              "authenticated owner could not use the private vault");
+        expectFailure(
+            [&] {
+                runtime.invokeOwnerSkill(
+                    "wallet.send",
+                    Json{{"recipient", "blocked"}, {"amount", 1},
+                         {"now_unix", 100}, {"request_id", "blocked"}});
+            },
+            "transaction-producing skill was allowed on the owner tools channel");
         check(registry.invoke("wallet.balance", Profile::Settlement, Json::object()).at("balance") ==
                   1000,
               "wallet balance skill failed");
