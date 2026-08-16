@@ -16,6 +16,11 @@ Page {
     property var pendingMessages: []
     property var activeTasks: []
     property var approvals: []
+    property var agents: []
+    property var remoteState: ({})
+    property string selectedAgentId: ""
+    property string pendingRequestId: ""
+    property string controllerPublicKey: ""
     property string lastError: ""
     readonly property bool bridgeAvailable: typeof logos !== "undefined"
 
@@ -41,12 +46,47 @@ Page {
         }
         loading = true
         try {
-            var state = decodedCall("getOwnerState", [])
-            pendingMessages = state.messages || []
-            activeTasks = state.tasks || []
-            approvals = state.approvals || []
-            connectionState = state.runtime && state.runtime.state === "ready"
-                              ? "online" : "degraded"
+            var now = Math.floor(Date.now() / 1000)
+            agents = decodedCall("getOwnerAgents", [JSON.stringify({"now_unix": now})])
+            var selectedFound = false
+            for (var agentIndex = 0; agentIndex < agents.length; ++agentIndex) {
+                if (agents[agentIndex].name === selectedAgentId)
+                    selectedFound = true
+            }
+            if (!selectedFound)
+                selectedAgentId = agents.length > 0 ? agents[0].name : ""
+
+            if (pendingRequestId !== "") {
+                var responses = decodedCall("getOwnerResponses", [])
+                for (var responseIndex = 0; responseIndex < responses.length; ++responseIndex) {
+                    var response = responses[responseIndex]
+                    if (response.requestId !== pendingRequestId)
+                        continue
+                    pendingRequestId = ""
+                    if (!response.ok)
+                        throw new Error(response.error && response.error.message
+                                        ? response.error.message
+                                        : qsTr("Owner command failed"))
+                    if (response.result && response.result.runtime) {
+                        remoteState = response.result
+                        pendingMessages = remoteState.messages || []
+                        activeTasks = remoteState.tasks || []
+                        approvals = remoteState.approvals || []
+                    }
+                    break
+                }
+            }
+            if (pendingRequestId === "" && selectedAgentId !== "") {
+                var request = decodedCall("requestOwnerCommand", [JSON.stringify({
+                    "target_agent_id": selectedAgentId,
+                    "action": "state.get",
+                    "payload": {},
+                    "now_unix": now
+                })])
+                pendingRequestId = request.requestId
+            }
+            connectionState = remoteState.runtime && remoteState.runtime.state === "ready"
+                              ? "online" : selectedAgentId === "" ? "offline" : "connecting"
             lastError = ""
         } catch (error) {
             connectionState = "offline"
@@ -56,19 +96,29 @@ Page {
         }
     }
 
+    function sendOwnerCommand(action, payload) {
+        if (selectedAgentId === "")
+            throw new Error(qsTr("No agent selected"))
+        var request = decodedCall("requestOwnerCommand", [JSON.stringify({
+            "target_agent_id": selectedAgentId,
+            "action": action,
+            "payload": payload,
+            "now_unix": Math.floor(Date.now() / 1000)
+        })])
+        pendingRequestId = request.requestId
+    }
+
     function decideMessageBackend(messageId, decision) {
         if (!bridgeAvailable) {
             decisionRequested(messageId, decision)
             return
         }
         try {
-            decodedCall("decideMessage", [JSON.stringify({
+            sendOwnerCommand("message.decide", {
                 "message_id": messageId,
-                "decision": decision,
-                "explicit_owner_action": true
-            })])
+                "decision": decision
+            })
             selectedMessageId = ""
-            refreshBackend()
         } catch (error) {
             lastError = error.message
         }
@@ -80,12 +130,28 @@ Page {
             return
         }
         try {
-            decodedCall("decideSpending", [JSON.stringify({
+            sendOwnerCommand("spending.decide", {
                 "proposal_id": proposalId,
                 "approved": approved,
                 "now_unix": Math.floor(Date.now() / 1000)
-            })])
-            refreshBackend()
+            })
+        } catch (error) {
+            lastError = error.message
+        }
+    }
+
+    function configureBackend(changes) {
+        if (!bridgeAvailable) {
+            configurationRequested(changes)
+            return
+        }
+        try {
+            var revision = remoteState.runtime && remoteState.runtime.configuration
+                         ? remoteState.runtime.configuration.revision : 0
+            sendOwnerCommand("configuration.update", {
+                "changes": changes,
+                "expected_revision": revision
+            })
         } catch (error) {
             lastError = error.message
         }
@@ -101,8 +167,17 @@ Page {
     }
 
     Component.onCompleted: {
-        if (bridgeAvailable)
-            Qt.callLater(refreshBackend)
+        if (bridgeAvailable) {
+            try {
+                decodedCall("initializeOwnerController", [])
+                var controllerStatus = decodedCall("getStatus", [])
+                controllerPublicKey = controllerStatus.runtime.signing_public_key || ""
+                Qt.callLater(refreshBackend)
+            } catch (error) {
+                connectionState = "offline"
+                lastError = error.message
+            }
+        }
     }
 
     Timer {
@@ -125,6 +200,21 @@ Page {
                 text: root.connectionState
                 color: root.connectionState === "online" ? "#137333" : "#8a1c1c"
                 Accessible.name: qsTr("Connection status: %1").arg(text)
+            }
+            ComboBox {
+                id: agentSelector
+                objectName: "agentSelector"
+                model: root.agents
+                textRole: "name"
+                valueRole: "name"
+                Layout.preferredWidth: 220
+                enabled: root.agents.length > 0
+                onActivated: {
+                    root.selectedAgentId = currentValue
+                    root.pendingRequestId = ""
+                    root.remoteState = ({})
+                }
+                Accessible.name: qsTr("Connected agent")
             }
             ToolButton {
                 text: "\u21bb"
@@ -260,12 +350,20 @@ Page {
                     width: parent.width
                     spacing: 12
                     Label { text: qsTr("Owner settings"); font.bold: true }
+                    TextField {
+                        text: root.controllerPublicKey
+                        readOnly: true
+                        selectByMouse: true
+                        placeholderText: qsTr("Controller public key")
+                        Layout.fillWidth: true
+                        Accessible.name: placeholderText
+                    }
                     CheckBox { id: classifier; text: qsTr("Enable local classifier") }
                     SpinBox { id: rateLimit; from: 1; to: 1000; value: 10; editable: true }
                     CheckBox { id: notifications; text: qsTr("Owner action notifications"); checked: true }
                     Button {
                         text: qsTr("Publish signed changes")
-                        onClicked: root.configurationRequested({
+                        onClicked: root.configureBackend({
                             "classifier_enabled": classifier.checked,
                             "rate_limit": rateLimit.value,
                             "owner_notifications": notifications.checked

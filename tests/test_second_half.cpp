@@ -103,6 +103,10 @@ void testConfiguration()
     check(restarted.snapshot().at("revision") == 1 &&
               restarted.snapshot().at("values").at("rate_limit") == 7,
           "owner configuration did not survive restart");
+    check(restarted.updateAuthenticated(Json{{"owner_notifications", false}}, 1)
+                      .at("revision") == 2 &&
+              restarted.snapshot().at("values").at("owner_notifications") == false,
+          "authenticated owner channel could not update durable configuration");
 }
 
 AgentCard signedCard(const std::string& id, const std::string& skill,

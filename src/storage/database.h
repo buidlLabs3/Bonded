@@ -49,6 +49,7 @@ public:
     std::vector<WalletTransfer> walletHistory() const;
     void upsertRuntimeRecord(const std::string& kind, const std::string& id,
                              const Json& document);
+    void deleteRuntimeRecord(const std::string& kind, const std::string& id);
     std::vector<Json> runtimeRecords(const std::string& kind) const;
 
 private:

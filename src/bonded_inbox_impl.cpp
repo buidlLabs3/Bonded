@@ -351,6 +351,10 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
         inbox_ = std::move(inbox);
         skills_ = std::move(skills);
         skill_runtime_ = std::move(skill_runtime);
+        skill_runtime_->setOwnerCommandHandler(
+            [this](const std::string& action, const Json& payload) {
+                return executeOwnerCommand(action, payload);
+            });
         {
             std::lock_guard lock(adapter_events_mutex_);
             active_logos_messaging_ = messaging;
@@ -361,6 +365,46 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
                                       {"skill_count", skills_->size()}});
         stateChanged(Json{{"type", "runtime.initialized"}, {"profile", profile_name_}}.dump());
         return response.dump();
+    } catch (const std::exception& error) {
+        return failure(error);
+    }
+}
+
+std::string BondedInboxImpl::initializeOwnerController()
+{
+    try {
+        if (skill_runtime_) {
+            return ok(Json{{"already_initialized", true},
+                           {"status", skill_runtime_->status()}})
+                .dump();
+        }
+        if (!context_ready_ || instancePersistencePath().empty()) {
+            throw bonded::DomainError("Basecamp controller persistence is unavailable");
+        }
+        const auto root = std::filesystem::path(instancePersistencePath()) / "owner-controller";
+        std::filesystem::create_directories(root);
+        const Json delivery{{"mode", "Edge"}, {"preset", "logos.test"}};
+        requireSuccess(modules().delivery_module.createNode(delivery.dump()),
+                       "Logos Delivery createNode");
+        requireSuccess(modules().delivery_module.start(), "Logos Delivery start");
+        const Json storage{{"data-dir", (root / "storage").string()},
+                           {"log-level", "INFO"},
+                           {"listen-port", 0},
+                           {"disc-port", 0},
+                           {"nat", "auto"},
+                           {"network", "logos.test"},
+                           {"storage-quota", 1073741824},
+                           {"mix-enabled", false}};
+        if (modules().storage_module.init(storage.dump()) != true) {
+            throw bonded::DomainError("Logos Storage init did not return true");
+        }
+        if (modules().storage_module.start() != true) {
+            throw bonded::DomainError("Logos Storage start did not return true");
+        }
+        return initialize(Json{{"profile", "inbox"},
+                               {"network", "lez-testnet"},
+                               {"data_directory", (root / "bonded").string()}}
+                              .dump());
     } catch (const std::exception& error) {
         return failure(error);
     }
@@ -442,18 +486,90 @@ std::string BondedInboxImpl::getOwnerState()
 {
     try {
         requireInitialized();
-        Json messages = Json::array();
-        for (const auto& message : database_->messages()) {
-            if (message.state == bonded::MessageState::PendingReview) {
-                messages.push_back(message);
-            }
-        }
-        auto state = skill_runtime_->ownerState();
-        state["messages"] = std::move(messages);
-        return ok(std::move(state)).dump();
+        return ok(ownerStateJson()).dump();
     } catch (const std::exception& error) {
         return failure(error);
     }
+}
+
+Json BondedInboxImpl::ownerStateJson() const
+{
+    Json messages = Json::array();
+    for (const auto& message : database_->messages()) {
+        if (message.state == bonded::MessageState::PendingReview) {
+            messages.push_back(message);
+        }
+    }
+    auto state = skill_runtime_->ownerState();
+    state["messages"] = std::move(messages);
+    return state;
+}
+
+std::string BondedInboxImpl::getOwnerAgents(const std::string& request_json)
+{
+    try {
+        requireInitialized();
+        const auto request = Json::parse(request_json);
+        return ok(skill_runtime_->ownerAgents(
+                      request.at("now_unix").get<std::uint64_t>()))
+            .dump();
+    } catch (const std::exception& error) {
+        return failure(error);
+    }
+}
+
+std::string BondedInboxImpl::requestOwnerCommand(const std::string& request_json)
+{
+    try {
+        requireInitialized();
+        const auto request = Json::parse(request_json);
+        return ok(skill_runtime_->requestOwnerCommand(
+                      request.at("target_agent_id").get<std::string>(),
+                      request.at("action").get<std::string>(),
+                      request.value("payload", Json::object()),
+                      request.at("now_unix").get<std::uint64_t>()))
+            .dump();
+    } catch (const std::exception& error) {
+        return failure(error);
+    }
+}
+
+std::string BondedInboxImpl::getOwnerResponses()
+{
+    try {
+        requireInitialized();
+        return ok(skill_runtime_->ownerResponses()).dump();
+    } catch (const std::exception& error) {
+        return failure(error);
+    }
+}
+
+Json BondedInboxImpl::executeOwnerCommand(const std::string& action,
+                                          const Json& payload)
+{
+    if (action == "state.get") {
+        return ownerStateJson();
+    }
+    if (action == "message.decide") {
+        const auto state = bonded::messageStateFromString(
+            payload.at("decision").get<std::string>());
+        const auto message = inbox_->decide(payload.at("message_id").get<std::string>(),
+                                            state, true,
+                                            payload.value("deterministic_violation", false));
+        return message;
+    }
+    if (action == "spending.decide") {
+        return skill_runtime_->decideSpending(
+            payload.at("proposal_id").get<std::string>(),
+            payload.at("approved").get<bool>(),
+            payload.at("now_unix").get<std::uint64_t>());
+    }
+    if (action == "configuration.update") {
+        return skill_runtime_->updateOwnerConfiguration(
+            payload.at("changes"),
+            payload.at("expected_revision").get<std::uint64_t>());
+    }
+    throw bonded::DomainError("unsupported owner channel action");
 }
 
 std::string BondedInboxImpl::publishPolicy(const std::string& policy_json)

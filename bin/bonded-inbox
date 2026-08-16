@@ -541,6 +541,77 @@ def command_invoke(args: argparse.Namespace) -> dict[str, Any]:
     ), f"skill {args.skill}")
 
 
+def command_card(args: argparse.Namespace) -> dict[str, Any]:
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    if not core_is_running(configuration, root):
+        raise CliError("Logos Core is stopped")
+    now = int(time.time())
+    if args.expires_seconds <= 0 or now > (2**64 - 1) - args.expires_seconds:
+        raise CliError("Agent Card expiry interval must be positive and bounded")
+    task_price = args.task_price
+    if task_price is None:
+        task_price = 1 if configuration["profile"] == "settlement" else 0
+    if task_price < 0:
+        raise CliError("Agent Card task price cannot be negative")
+    payment_recipient = args.payment_recipient
+    if not payment_recipient and task_price > 0:
+        payment_recipient = configuration.get("lez_account_id", "")
+    card_input: dict[str, Any] = {
+        "now_unix": now,
+        "expires_at": now + args.expires_seconds,
+        "task_price": task_price,
+        "payment_recipient": payment_recipient,
+        "publish": True,
+    }
+    request_path = root / "runtime-config" / "publish-card.json"
+    atomic_json(request_path, {"skill": "agent.card", "input": card_input})
+    return nested_bonded_response(call(
+        configuration, root, MODULE_NAME, "invokeSkill", "@" + str(request_path),
+    ), "publish Agent Card")
+
+
+def command_agents(args: argparse.Namespace) -> Any:
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    if not core_is_running(configuration, root):
+        raise CliError("Logos Core is stopped")
+    request_path = root / "runtime-config" / "owner-agents.json"
+    atomic_json(request_path, {"now_unix": int(time.time())})
+    return nested_bonded_response(call(
+        configuration, root, MODULE_NAME, "getOwnerAgents", "@" + str(request_path),
+    ), "list owner agents")
+
+
+def command_owner_request(args: argparse.Namespace) -> dict[str, Any]:
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    if not core_is_running(configuration, root):
+        raise CliError("Logos Core is stopped")
+    request = {
+        "target_agent_id": args.target_agent,
+        "action": args.action,
+        "payload": read_json(resolved_file(args.input)),
+        "now_unix": int(time.time()),
+    }
+    request_path = root / "runtime-config" / "owner-request.json"
+    atomic_json(request_path, request)
+    return nested_bonded_response(call(
+        configuration, root, MODULE_NAME, "requestOwnerCommand",
+        "@" + str(request_path),
+    ), "send owner command")
+
+
+def command_owner_responses(args: argparse.Namespace) -> Any:
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    if not core_is_running(configuration, root):
+        raise CliError("Logos Core is stopped")
+    return nested_bonded_response(call(
+        configuration, root, MODULE_NAME, "getOwnerResponses",
+    ), "list owner responses")
+
+
 def command_logs(args: argparse.Namespace) -> dict[str, Any]:
     path = root_dir(args) / "logs" / "logoscore.log"
     try:
@@ -601,6 +672,19 @@ def parser() -> argparse.ArgumentParser:
     invoke.add_argument("--skill", required=True)
     invoke.add_argument("--input", required=True)
     invoke.set_defaults(function=command_invoke)
+    card = subparsers.add_parser("card")
+    card.add_argument("--expires-seconds", type=int, default=86400)
+    card.add_argument("--task-price", type=int)
+    card.add_argument("--payment-recipient", default="")
+    card.set_defaults(function=command_card)
+    subparsers.add_parser("agents").set_defaults(function=command_agents)
+    owner_request = subparsers.add_parser("owner-request")
+    owner_request.add_argument("--target-agent", required=True)
+    owner_request.add_argument("--action", required=True)
+    owner_request.add_argument("--input", required=True)
+    owner_request.set_defaults(function=command_owner_request)
+    subparsers.add_parser("owner-responses").set_defaults(
+        function=command_owner_responses)
     teardown = subparsers.add_parser("teardown")
     teardown.add_argument("--confirm", required=True)
     teardown.set_defaults(function=command_teardown)

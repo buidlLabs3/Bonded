@@ -9,7 +9,10 @@
 #include "services/storage_service.h"
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 
 namespace bonded {
@@ -31,6 +34,8 @@ struct RuntimeAdapters {
 
 class SkillRuntime {
 public:
+    using OwnerCommand = std::function<Json(const std::string&, const Json&)>;
+
     SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
                  std::function<void(const Json&)> owner_action_required);
     SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
@@ -42,6 +47,13 @@ public:
     Json ownerState() const;
     Json decideSpending(const std::string& proposal_id, bool approved,
                         std::uint64_t now_unix);
+    Json updateOwnerConfiguration(const Json& changes, std::uint64_t expected_revision);
+    void setOwnerCommandHandler(OwnerCommand handler);
+    Json ownerAgents(std::uint64_t now_unix) const;
+    Json requestOwnerCommand(const std::string& target_agent_id,
+                             const std::string& action, const Json& payload,
+                             std::uint64_t now_unix);
+    Json ownerResponses() const;
 
 private:
     Json handler(const std::string& name, const Json& input);
@@ -49,6 +61,10 @@ private:
                       std::uint64_t task_price,
                       const std::string& payment_recipient) const;
     static Json spendingProposalJson(const SpendingProposal& proposal);
+    static std::string ownerRequestTopic(const std::string& agent_id);
+    static std::string ownerResponseTopic(const std::string& agent_id);
+    void receiveOwnerRequest(const std::string& raw);
+    void receiveOwnerResponse(const std::string& raw);
 
     SkillRegistry& registry_;
     Profile profile_;
@@ -59,7 +75,14 @@ private:
     std::string encryption_private_key_;
     std::string encryption_public_key_;
     std::string storage_key_;
+    std::string owner_public_key_;
     std::function<void(const Json&)> owner_action_required_;
+    OwnerCommand owner_command_;
+    Database* database_{nullptr};
+    mutable std::mutex owner_mutex_;
+    std::map<std::string, AgentCard> owner_pending_;
+    std::map<std::string, Json> owner_responses_;
+    std::set<std::string> owner_processed_;
 
     std::unique_ptr<MessagingAdapter> messaging_adapter_;
     std::unique_ptr<StorageAdapter> storage_adapter_;

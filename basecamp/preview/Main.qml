@@ -34,8 +34,10 @@ ApplicationWindow {
                 { "id": "msg-1051", "sender": "lez1...c104", "state": "policy checked" }
             ]
             activeTasks: [
-                { "id": "task-77", "skill": "attachment-scan", "state": "complete" },
-                { "id": "task-81", "skill": "paid-task", "state": "awaiting settlement" }
+                { "id": "task-77", "metadata": { "logos": { "skill": "attachment-scan" } },
+                  "status": { "state": "TASK_STATE_COMPLETED" } },
+                { "id": "task-81", "metadata": { "logos": { "skill": "paid-task" } },
+                  "status": { "state": "TASK_STATE_INPUT_REQUIRED" } }
             ]
             approvals: [
                 { "id": "proposal-31", "amount": "3", "recipient": "lez1...bb40" },

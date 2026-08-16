@@ -80,6 +80,17 @@ Json ConfigurationService::update(const Json& request)
     }
     const auto expected_revision = request.at("expected_revision").get<std::uint64_t>();
     const auto& changes = request.at("changes");
+    return apply(changes, expected_revision);
+}
+
+Json ConfigurationService::updateAuthenticated(const Json& changes,
+                                                std::uint64_t expected_revision)
+{
+    return apply(changes, expected_revision);
+}
+
+Json ConfigurationService::apply(const Json& changes, std::uint64_t expected_revision)
+{
     validateChanges(changes);
 
     std::lock_guard lock(mutex_);

@@ -28,10 +28,13 @@
         configFile = ./metadata.json;
         flakeInputs = inputs;
       };
+      basecampInputs = inputs // {
+        bonded_inbox = core // { inherit inputs; };
+      };
       basecamp = logos-module-builder.lib.mkLogosQmlModule {
         src = ./basecamp;
         configFile = ./basecamp/metadata.json;
-        flakeInputs = inputs;
+        flakeInputs = basecampInputs;
       };
     in
     core // {
@@ -63,6 +66,7 @@
             '';
           in
           (core.apps.${system} or { }) // {
+            basecamp = basecamp.apps.${system}.default;
             basecamp-preview = {
               type = "app";
               program = "${preview}";

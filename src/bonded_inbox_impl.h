@@ -19,8 +19,12 @@ class BondedInboxImpl : public LogosModuleContext {
 public:
     ~BondedInboxImpl();
     std::string initialize(const std::string& configuration_json);
+    std::string initializeOwnerController();
     std::string getStatus();
     std::string getOwnerState();
+    std::string getOwnerAgents(const std::string& request_json);
+    std::string requestOwnerCommand(const std::string& request_json);
+    std::string getOwnerResponses();
     std::string publishPolicy(const std::string& policy_json);
     std::string submitMessage(const std::string& submission_json);
     std::string decideMessage(const std::string& decision_json);
@@ -38,6 +42,9 @@ private:
     std::string startStorageUpload(const std::string& payload);
     void cancelStorageUpload(const std::string& session);
     void cleanupStorageUpload(const std::string& session);
+    bonded::Json ownerStateJson() const;
+    bonded::Json executeOwnerCommand(const std::string& action,
+                                     const bonded::Json& payload);
     std::string failure(const std::exception& error) const;
 
     std::string data_directory_;

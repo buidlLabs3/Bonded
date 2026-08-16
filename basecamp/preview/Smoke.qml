@@ -16,7 +16,8 @@ ApplicationWindow {
             { "id": "smoke-message", "sender": "smoke-sender", "state": "bond verified" }
         ]
         activeTasks: [
-            { "id": "smoke-task", "skill": "paid-task", "state": "ready" }
+            { "id": "smoke-task", "metadata": { "logos": { "skill": "paid-task" } },
+              "status": { "state": "TASK_STATE_WORKING" } }
         ]
         approvals: [
             { "id": "smoke-approval", "amount": "3", "recipient": "smoke-recipient" }

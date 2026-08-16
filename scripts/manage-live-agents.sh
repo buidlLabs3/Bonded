@@ -47,6 +47,11 @@ if [[ "$action" != deploy ]]; then
     for profile in inbox vault settlement; do
         "$repo_root/bin/bonded-inbox" --data-dir "$data_root/$profile" "$action"
     done
+    if [[ "$action" == start ]]; then
+        for profile in inbox vault settlement inbox vault; do
+            "$repo_root/bin/bonded-inbox" --data-dir "$data_root/$profile" card
+        done
+    fi
     exit 0
 fi
 
@@ -115,3 +120,9 @@ done
     --lez-statistics "$wallet_home/statistics.json" \
     --lez-account-id "$lez_account_id" \
     --lez-account-kind "$lez_account_kind"
+
+# Publish after every Core instance is subscribed, then repeat free cards so late
+# subscribers receive the full three-agent catalog without retained-topic assumptions.
+for profile in inbox vault settlement inbox vault; do
+    "$repo_root/bin/bonded-inbox" --data-dir "$data_root/$profile" card
+done

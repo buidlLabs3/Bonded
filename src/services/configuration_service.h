@@ -20,10 +20,12 @@ public:
 
     Json snapshot() const;
     Json update(const Json& request);
+    Json updateAuthenticated(const Json& changes, std::uint64_t expected_revision);
     static std::string signingPayload(const Json& request);
 
 private:
     static void validateChanges(const Json& changes);
+    Json apply(const Json& changes, std::uint64_t expected_revision);
 
     mutable std::mutex mutex_;
     Json values_;

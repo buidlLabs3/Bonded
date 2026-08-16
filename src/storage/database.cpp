@@ -394,6 +394,19 @@ void Database::upsertRuntimeRecord(const std::string& kind, const std::string& i
     }
 }
 
+void Database::deleteRuntimeRecord(const std::string& kind, const std::string& id)
+{
+    if (kind.empty() || id.empty()) {
+        throw DomainError("runtime record kind and id are required");
+    }
+    Statement statement(db_, "DELETE FROM runtime_records WHERE kind = ? AND id = ?");
+    bindText(statement.get(), 1, kind);
+    bindText(statement.get(), 2, id);
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        throw DomainError(sqlite3_errmsg(db_));
+    }
+}
+
 std::vector<Json> Database::runtimeRecords(const std::string& kind) const
 {
     if (kind.empty()) {

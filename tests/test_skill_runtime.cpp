@@ -4,7 +4,9 @@
 #include "security/crypto.h"
 
 #include <iostream>
+#include <ctime>
 #include <filesystem>
+#include <memory>
 #include <set>
 #include <stdexcept>
 
@@ -14,6 +16,44 @@ using bonded::Json;
 using bonded::Profile;
 using bonded::SkillRegistry;
 using bonded::SkillRuntime;
+
+class SharedMessagingAdapter final : public bonded::MessagingAdapter {
+public:
+    explicit SharedMessagingAdapter(std::shared_ptr<bonded::MemoryMessagingAdapter> bus)
+        : bus_(std::move(bus)) {}
+
+    std::string send(const std::string& topic, const std::string& payload) override
+    {
+        return bus_->send(topic, payload);
+    }
+
+    void subscribe(const std::string& topic,
+                   std::function<void(const std::string&)> handler) override
+    {
+        bus_->subscribe(topic, std::move(handler));
+    }
+
+    void join(const std::string& group_id) override { bus_->join(group_id); }
+
+    std::string createGroup(const std::vector<std::string>& members) override
+    {
+        return bus_->createGroup(members);
+    }
+
+private:
+    std::shared_ptr<bonded::MemoryMessagingAdapter> bus_;
+};
+
+bonded::RuntimeAdapters sharedAdapters(
+    const std::shared_ptr<bonded::MemoryMessagingAdapter>& bus)
+{
+    return {std::make_unique<SharedMessagingAdapter>(bus),
+            std::make_unique<bonded::MemoryStorageAdapter>(),
+            std::make_unique<bonded::MemoryWalletAdapter>(1000),
+            std::make_unique<bonded::MemoryProgramAdapter>(),
+            "logos-delivery-module", "logos-storage-module",
+            "memory-test-double", "memory-test-double"};
+}
 
 void check(bool condition, const std::string& message)
 {
@@ -192,6 +232,62 @@ int main()
                                          std::move(unavailable_adapters));
         check(unavailable_runtime.status().at("state") == "degraded",
               "Vault hid the unavailable LEZ program dependency");
+
+        const auto owner_bus = std::make_shared<bonded::MemoryMessagingAdapter>();
+        SkillRegistry controller_registry;
+        SkillRuntime controller(controller_registry, Profile::Inbox,
+                                Json{{"network", "logos-local"}},
+                                [](const Json&) {}, sharedAdapters(owner_bus));
+        controller.registerDefaultSkills();
+        const auto controller_status = controller.status();
+        SkillRegistry agent_registry;
+        SkillRuntime controlled_agent(
+            agent_registry, Profile::Inbox,
+            Json{{"network", "logos-local"},
+                 {"owner_public_key", controller_status.at("signing_public_key")}},
+            [](const Json&) {}, sharedAdapters(owner_bus));
+        controlled_agent.registerDefaultSkills();
+        controlled_agent.setOwnerCommandHandler(
+            [](const std::string& action, const Json& payload) {
+                check(action == "state.get", "owner channel changed the requested action");
+                return Json{{"runtime", Json{{"state", "ready"}}},
+                            {"echo", payload}};
+            });
+        const auto now = static_cast<std::uint64_t>(std::time(nullptr));
+        const auto controlled_card = agent_registry.invoke(
+            "agent.card", Profile::Inbox,
+            Json{{"now_unix", now}, {"expires_at", now + 3600}});
+        const auto request = controller.requestOwnerCommand(
+            controlled_card.at("name").get<std::string>(), "state.get",
+            Json{{"refresh", true}}, now);
+        const auto responses = controller.ownerResponses();
+        check(request.at("state") == "pending" && responses.size() == 1 &&
+                  responses.at(0).at("requestId") == request.at("requestId") &&
+                  responses.at(0).at("ok") == true &&
+                  responses.at(0).at("result").at("runtime").at("state") == "ready" &&
+                  responses.at(0).at("result").at("echo").at("refresh") == true,
+              "encrypted owner channel did not complete across separate runtimes");
+
+        const auto unauthorized_keys = bonded::Crypto::generateEd25519KeyPair();
+        SkillRegistry unauthorized_registry;
+        SkillRuntime unauthorized_agent(
+            unauthorized_registry, Profile::Inbox,
+            Json{{"network", "logos-local"},
+                 {"owner_public_key", unauthorized_keys.second}},
+            [](const Json&) {}, sharedAdapters(owner_bus));
+        unauthorized_agent.registerDefaultSkills();
+        unauthorized_agent.setOwnerCommandHandler(
+            [](const std::string&, const Json&) {
+                return Json{{"unauthorized", true}};
+            });
+        const auto unauthorized_card = unauthorized_registry.invoke(
+            "agent.card", Profile::Inbox,
+            Json{{"now_unix", now}, {"expires_at", now + 3600}});
+        controller.requestOwnerCommand(
+            unauthorized_card.at("name").get<std::string>(), "state.get",
+            Json::object(), now);
+        check(controller.ownerResponses().size() == 1,
+              "agent accepted an owner channel command signed by the wrong controller");
 
         std::cout << "PASS 21-skill runtime conformance\n";
         return 0;

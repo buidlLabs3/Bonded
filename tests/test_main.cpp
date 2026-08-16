@@ -209,6 +209,9 @@ void testDatabase()
     const auto runtime_records = database.runtimeRecords("test");
     check(runtime_records.size() == 1 && runtime_records.front().at("revision") == 2,
           "runtime record was not durably upserted");
+    database.deleteRuntimeRecord("test", "one");
+    check(database.runtimeRecords("test").empty(),
+          "runtime record cleanup left dead durable state");
 }
 
 void testProcessInterruptionRecovery()

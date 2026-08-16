@@ -7,9 +7,11 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <filesystem>
 #include <fcntl.h>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -63,6 +65,21 @@ std::vector<A2ATask> loadA2ATasks(Database* database)
         }
     }
     return tasks;
+}
+
+std::uint64_t unixNow()
+{
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+std::uint64_t ownerMessageExpiry(std::uint64_t now_unix)
+{
+    constexpr auto lifetime = std::uint64_t{300};
+    if (now_unix > std::numeric_limits<std::uint64_t>::max() - lifetime) {
+        throw DomainError("owner channel timestamp overflow");
+    }
+    return now_unix + lifetime;
 }
 
 std::optional<Json> loadRuntimeConfiguration(Database* database)
@@ -235,7 +252,9 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
                            RuntimeAdapters adapters, Database* database)
     : registry_(registry), profile_(profile),
       network_(configuration.value("network", "logos-local")),
+      owner_public_key_(configuration.value("owner_public_key", "")),
       owner_action_required_(std::move(owner_action_required)),
+      database_(database),
       messaging_adapter_(std::move(adapters.messaging)),
       storage_adapter_(std::move(adapters.storage)),
       wallet_adapter_(std::move(adapters.wallet)),
@@ -306,6 +325,52 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
     storage_key_ = identity.storage_key;
     agent_id_ = "npk:" + Crypto::sha256(public_key_).substr(0, 32);
     a2a_.configureTransport(agent_id_, private_key_, public_key_, encryption_private_key_);
+
+    if (!owner_public_key_.empty()) {
+        requireKey(owner_public_key_, "owner signing public key");
+        messaging_adapter_->subscribe(ownerRequestTopic(agent_id_), [this](const std::string& raw) {
+            receiveOwnerRequest(raw);
+        });
+    }
+    if (database_ != nullptr) {
+        for (const auto& record : database_->runtimeRecords("owner-response")) {
+            try {
+                owner_responses_.emplace(record.at("requestId").get<std::string>(), record);
+            } catch (const std::exception&) {
+                continue;
+            }
+        }
+        while (owner_responses_.size() > 1024) {
+            const auto expired = owner_responses_.begin()->first;
+            owner_responses_.erase(owner_responses_.begin());
+            database_->deleteRuntimeRecord("owner-response", expired);
+        }
+        for (const auto& record : database_->runtimeRecords("owner-pending")) {
+            try {
+                const auto request_id = record.at("requestId").get<std::string>();
+                if (!owner_responses_.contains(request_id)) {
+                    owner_pending_.emplace(request_id, record.at("card").get<AgentCard>());
+                }
+            } catch (const std::exception&) {
+                continue;
+            }
+        }
+        for (const auto& record : database_->runtimeRecords("owner-processed")) {
+            try {
+                owner_processed_.insert(record.at("envelopeId").get<std::string>());
+            } catch (const std::exception&) {
+                continue;
+            }
+        }
+        while (owner_processed_.size() > 1024) {
+            const auto expired = *owner_processed_.begin();
+            owner_processed_.erase(owner_processed_.begin());
+            database_->deleteRuntimeRecord("owner-processed", expired);
+        }
+    }
+    messaging_adapter_->subscribe(ownerResponseTopic(agent_id_), [this](const std::string& raw) {
+        receiveOwnerResponse(raw);
+    });
 }
 
 void SkillRuntime::registerDefaultSkills()
@@ -535,6 +600,7 @@ Json SkillRuntime::status() const
     return Json{{"state", degraded ? "degraded" : "ready"},
                 {"profile", toString(profile_)},
                 {"agent_id", agent_id_},
+                {"signing_public_key", public_key_},
                 {"messaging_encryption_public_key", encryption_public_key_},
                 {"balance", balance},
                 {"wallet_error", wallet_error},
@@ -571,6 +637,230 @@ Json SkillRuntime::decideSpending(const std::string& proposal_id, bool approved,
         a2a_.recordSettlement(proposal.id, proposal.transfer_id, now_unix);
     }
     return spendingProposalJson(proposal);
+}
+
+Json SkillRuntime::updateOwnerConfiguration(const Json& changes,
+                                            std::uint64_t expected_revision)
+{
+    return configuration_.updateAuthenticated(changes, expected_revision);
+}
+
+std::string SkillRuntime::ownerRequestTopic(const std::string& agent_id)
+{
+    return "/bonded-inbox/1/owner/" + Crypto::sha256(agent_id).substr(0, 32) + "/request";
+}
+
+std::string SkillRuntime::ownerResponseTopic(const std::string& agent_id)
+{
+    return "/bonded-inbox/1/owner/" + Crypto::sha256(agent_id).substr(0, 32) + "/response";
+}
+
+void SkillRuntime::setOwnerCommandHandler(OwnerCommand handler)
+{
+    if (!handler) {
+        throw DomainError("owner command handler is required");
+    }
+    std::lock_guard lock(owner_mutex_);
+    if (owner_command_) {
+        throw DomainError("owner command handler is already configured");
+    }
+    owner_command_ = std::move(handler);
+}
+
+Json SkillRuntime::ownerAgents(std::uint64_t now_unix) const
+{
+    Json agents = Json::array();
+    for (const auto& card : a2a_.discover("", now_unix)) {
+        if (card.agent_id != agent_id_) agents.push_back(card);
+    }
+    return agents;
+}
+
+Json SkillRuntime::requestOwnerCommand(const std::string& target_agent_id,
+                                       const std::string& action, const Json& payload,
+                                       std::uint64_t now_unix)
+{
+    if (target_agent_id.empty() || action.empty() || !payload.is_object()) {
+        throw DomainError("owner command target, action, and object payload are required");
+    }
+    AgentCard target;
+    bool found = false;
+    for (const auto& card : a2a_.discover("", now_unix)) {
+        if (card.agent_id == target_agent_id) {
+            target = card;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        throw DomainError("owner command target has no discovered valid Agent Card");
+    }
+    const auto request_id = "owner:" + Crypto::randomHex(16);
+    {
+        std::lock_guard lock(owner_mutex_);
+        if (owner_pending_.size() >= 1024) {
+            throw DomainError("owner channel has too many retained requests");
+        }
+        owner_pending_.emplace(request_id, target);
+    }
+    const Json request{{"protocol", "bonded-inbox/owner-channel/v1"},
+                       {"requestId", request_id},
+                       {"action", action},
+                       {"payload", payload},
+                       {"replyEncryptionPublicKey", encryption_public_key_}};
+    SignedEnvelope envelope{"bonded-inbox/envelope/v2",
+                            network_,
+                            request_id,
+                            agent_id_,
+                            target.agent_id,
+                            ownerRequestTopic(target.agent_id),
+                            Crypto::randomHex(16),
+                            ownerMessageExpiry(now_unix),
+                            "", "", "", "", "", ""};
+    envelope = MessagingService::sealAndSign(
+        std::move(envelope), request.dump(),
+        target.capabilities.at("messaging_encryption_public_key").get<std::string>(),
+        private_key_, public_key_);
+    std::string message_id;
+    try {
+        message_id = messaging_.send(envelope, now_unix);
+    } catch (...) {
+        std::lock_guard lock(owner_mutex_);
+        owner_pending_.erase(request_id);
+        throw;
+    }
+    if (database_ != nullptr) {
+        database_->upsertRuntimeRecord(
+            "owner-pending", request_id,
+            Json{{"requestId", request_id}, {"card", target}});
+    }
+    return Json{{"requestId", request_id},
+                {"messageId", message_id},
+                {"state", "pending"}};
+}
+
+void SkillRuntime::receiveOwnerRequest(const std::string& raw)
+{
+    try {
+        const auto envelope = Json::parse(raw).get<SignedEnvelope>();
+        const auto owner_agent_id = "npk:" + Crypto::sha256(owner_public_key_).substr(0, 32);
+        if (envelope.topic != ownerRequestTopic(agent_id_)) return;
+        const auto plaintext = MessagingService::open(
+            envelope, unixNow(), network_, agent_id_, encryption_private_key_,
+            owner_agent_id, owner_public_key_);
+        const auto request = Json::parse(plaintext);
+        if (request.value("protocol", "") != "bonded-inbox/owner-channel/v1" ||
+            request.value("requestId", "") != envelope.id ||
+            !request.contains("payload") || !request.at("payload").is_object()) {
+            return;
+        }
+        const auto reply_key = request.at("replyEncryptionPublicKey").get<std::string>();
+        requireKey(reply_key, "owner reply encryption public key");
+        const auto replay_id = envelope.id + ":" + envelope.nonce;
+        std::string expired_replay;
+        {
+            std::lock_guard lock(owner_mutex_);
+            if (!owner_processed_.insert(replay_id).second) return;
+            if (owner_processed_.size() > 1024) {
+                expired_replay = *owner_processed_.begin();
+                owner_processed_.erase(owner_processed_.begin());
+            }
+        }
+        if (database_ != nullptr) {
+            database_->upsertRuntimeRecord(
+                "owner-processed", replay_id,
+                Json{{"envelopeId", replay_id}, {"processedAt", unixNow()}});
+            if (!expired_replay.empty()) {
+                database_->deleteRuntimeRecord("owner-processed", expired_replay);
+            }
+        }
+        OwnerCommand handler;
+        {
+            std::lock_guard lock(owner_mutex_);
+            handler = owner_command_;
+        }
+        Json response{{"protocol", "bonded-inbox/owner-channel/v1"},
+                      {"requestId", envelope.id}};
+        try {
+            if (!handler) throw DomainError("agent owner command handler is unavailable");
+            response["ok"] = true;
+            response["result"] = handler(request.at("action").get<std::string>(),
+                                         request.at("payload"));
+        } catch (const std::exception& error) {
+            response["ok"] = false;
+            response["error"] = Json{{"message", error.what()}};
+        }
+        const auto now = unixNow();
+        SignedEnvelope reply{"bonded-inbox/envelope/v2",
+                             network_,
+                             envelope.id,
+                             agent_id_,
+                             owner_agent_id,
+                             ownerResponseTopic(owner_agent_id),
+                             Crypto::randomHex(16),
+                             ownerMessageExpiry(now),
+                             "", "", "", "", "", ""};
+        reply = MessagingService::sealAndSign(std::move(reply), response.dump(), reply_key,
+                                              private_key_, public_key_);
+        static_cast<void>(messaging_.send(reply, now));
+    } catch (const std::exception&) {
+        return;
+    }
+}
+
+void SkillRuntime::receiveOwnerResponse(const std::string& raw)
+{
+    try {
+        const auto envelope = Json::parse(raw).get<SignedEnvelope>();
+        if (envelope.topic != ownerResponseTopic(agent_id_)) return;
+        AgentCard target;
+        {
+            std::lock_guard lock(owner_mutex_);
+            const auto pending = owner_pending_.find(envelope.id);
+            if (pending == owner_pending_.end()) return;
+            target = pending->second;
+        }
+        const auto plaintext = MessagingService::open(
+            envelope, unixNow(), network_, agent_id_, encryption_private_key_,
+            target.agent_id, target.public_key);
+        auto response = Json::parse(plaintext);
+        if (response.value("protocol", "") != "bonded-inbox/owner-channel/v1" ||
+            response.value("requestId", "") != envelope.id ||
+            !response.contains("ok") || !response.at("ok").is_boolean()) {
+            return;
+        }
+        response["receivedAt"] = unixNow();
+        std::string expired_response;
+        {
+            std::lock_guard lock(owner_mutex_);
+            owner_responses_[envelope.id] = response;
+            owner_pending_.erase(envelope.id);
+            while (owner_responses_.size() > 1024) {
+                expired_response = owner_responses_.begin()->first;
+                owner_responses_.erase(owner_responses_.begin());
+            }
+        }
+        if (database_ != nullptr) {
+            database_->upsertRuntimeRecord("owner-response", envelope.id, response);
+            database_->deleteRuntimeRecord("owner-pending", envelope.id);
+            if (!expired_response.empty()) {
+                database_->deleteRuntimeRecord("owner-response", expired_response);
+            }
+        }
+    } catch (const std::exception&) {
+        return;
+    }
+}
+
+Json SkillRuntime::ownerResponses() const
+{
+    std::lock_guard lock(owner_mutex_);
+    Json responses = Json::array();
+    for (const auto& [request_id, response] : owner_responses_) {
+        (void)request_id;
+        responses.push_back(response);
+    }
+    return responses;
 }
 
 } // namespace bonded
