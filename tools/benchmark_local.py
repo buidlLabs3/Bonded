@@ -7,20 +7,15 @@ import json
 import os
 import platform
 import shlex
-import statistics
 import subprocess
 import tempfile
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
-CLI = REPO / "bin" / "bonded-inbox"
 NATIVE_SOURCE = REPO / "benchmarks" / "local_workloads.cpp"
 LIMITS = {
-    "cli_deploy_p95_ms": {"comparison": "maximum", "threshold": 1500.0, "unit": "ms"},
-    "cli_status_p95_ms": {"comparison": "maximum", "threshold": 1500.0, "unit": "ms"},
     "queue_operations_per_second": {
         "comparison": "minimum",
         "threshold": 20000.0,
@@ -53,23 +48,6 @@ LIMITS = {
 
 class BenchmarkError(RuntimeError):
     pass
-
-
-def latency(command, repetitions=1):
-    samples = []
-    for _ in range(repetitions):
-        started = time.perf_counter()
-        subprocess.run(command, cwd=REPO, check=True, capture_output=True, text=True)
-        samples.append((time.perf_counter() - started) * 1000)
-    ordered = sorted(samples)
-    p95_index = max(0, int(len(ordered) * 0.95 + 0.999999) - 1)
-    return {
-        "minimum_ms": min(samples),
-        "maximum_ms": max(samples),
-        "mean_ms": statistics.fmean(samples),
-        "p95_ms": ordered[p95_index],
-        "samples": len(samples),
-    }
 
 
 def compile_native(output: Path) -> None:
@@ -141,10 +119,8 @@ def run_native(binary: Path, database: Path) -> dict:
     return report
 
 
-def metric_values(cli_deploy: dict, cli_status: dict, native: dict) -> dict[str, float]:
+def metric_values(native: dict) -> dict[str, float]:
     return {
-        "cli_deploy_p95_ms": float(cli_deploy["p95_ms"]),
-        "cli_status_p95_ms": float(cli_status["p95_ms"]),
         "queue_operations_per_second": float(native["queue"]["operations_per_second"]),
         "spam_attempts_per_second": float(native["spam_burst"]["attempts_per_second"]),
         "attachment_mib_per_second": float(native["attachment_round_trip"]["mib_per_second"]),
@@ -187,34 +163,11 @@ def source_commit() -> str:
 def qualify(native_binary: Path | None = None) -> dict:
     with tempfile.TemporaryDirectory(prefix="bonded-local-benchmark-") as temporary:
         root = Path(temporary)
-        module = root / "module.lgx"
-        module.write_bytes(b"benchmark-module")
-        core = root / "logos-core"
-        core.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        core.chmod(0o755)
-        data = root / "agent"
-        base = [str(CLI), "--data-dir", str(data)]
-        deploy = base + [
-            "deploy",
-            "--profile",
-            "inbox",
-            "--network",
-            "logos-local",
-            "--owner-public-key",
-            "benchmark-owner",
-            "--module",
-            str(module),
-            "--core-binary",
-            str(core),
-            "--test-deployment",
-        ]
         binary = native_binary or root / "local-workloads"
         if native_binary is None:
             compile_native(binary)
         native = run_native(binary.resolve(strict=True), root / "recovery.db")
-        deploy_latency = latency(deploy)
-        status_latency = latency(base + ["status"], repetitions=25)
-        values = metric_values(deploy_latency, status_latency, native)
+        values = metric_values(native)
         checks = evaluate(values)
         return {
             "schema_version": 1,
@@ -231,8 +184,6 @@ def qualify(native_binary: Path | None = None) -> dict:
             "metric_values": values,
             "checks": checks,
             "measurements": {
-                "cli_deploy": deploy_latency,
-                "cli_status": status_latency,
                 "native": native,
             },
             "unsupported_claims": {

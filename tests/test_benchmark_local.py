@@ -33,7 +33,7 @@ class LocalBenchmarkTests(unittest.TestCase):
 
     def test_missing_or_unknown_metrics_fail_closed(self):
         values = self.passing_values()
-        values.pop("cli_status_p95_ms")
+        values.pop("queue_operations_per_second")
         with self.assertRaisesRegex(benchmark.BenchmarkError, "supported limit set"):
             benchmark.evaluate(values)
 

@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -79,6 +80,21 @@ def hex32(value: str) -> bool:
     return len(value) == 64 and all(
         character in "0123456789abcdefABCDEF" for character in value
     )
+
+
+def lgx_name(path: Path) -> str:
+    try:
+        with tarfile.open(path, "r:*") as archive:
+            manifests = [item for item in archive.getmembers() if item.name == "manifest.json"]
+            if len(manifests) != 1 or not manifests[0].isfile() or manifests[0].size > 1024 * 1024:
+                return ""
+            source = archive.extractfile(manifests[0])
+            if source is None:
+                return ""
+            manifest = json.load(source)
+    except (OSError, tarfile.TarError, json.JSONDecodeError, UnicodeDecodeError):
+        return ""
+    return manifest.get("name", "") if isinstance(manifest, dict) else ""
 
 
 def public_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -168,11 +184,23 @@ def deployment_plan(args: argparse.Namespace) -> dict[str, Any]:
     dependencies = [resolved_file(item) for item in args.dependency_module]
     core = resolved_file(args.core_binary)
     package_manager = resolved_file(args.package_manager)
+    module_package_name = lgx_name(module) if module.is_file() else ""
+    dependency_package_names = [lgx_name(item) for item in dependencies if item.is_file()]
+    dependency_by_name = dict(zip(dependency_package_names, dependencies))
+    ordered_dependencies = (
+        [dependency_by_name[name] for name in DEPENDENCY_NAMES]
+        if len(dependency_by_name) == len(DEPENDENCY_NAMES)
+        and set(dependency_by_name) == set(DEPENDENCY_NAMES)
+        else dependencies
+    )
     checks = {
         "module_exists": module.is_file(),
+        "module_package_valid": module_package_name == MODULE_NAME,
         "three_dependency_modules_present": len(dependencies) == len(DEPENDENCY_NAMES)
         and len(set(dependencies)) == len(DEPENDENCY_NAMES)
         and all(item.is_file() for item in dependencies),
+        "dependency_package_names_valid": len(dependency_package_names) == len(DEPENDENCY_NAMES)
+        and set(dependency_package_names) == set(DEPENDENCY_NAMES),
         "core_binary_executable": executable(core),
         "package_manager_executable": executable(package_manager),
         "owner_key_valid": hex32(args.owner_public_key),
@@ -195,7 +223,7 @@ def deployment_plan(args: argparse.Namespace) -> dict[str, Any]:
         "profile": args.profile,
         "network": args.network,
         "module": str(module),
-        "dependency_modules": [str(item) for item in dependencies],
+        "dependency_modules": [str(item) for item in ordered_dependencies],
         "core_binary": str(core),
         "package_manager": str(package_manager),
         "checks": checks,

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
+import io
 import json
 import os
 import subprocess
+import tarfile
 import tempfile
 import textwrap
 import unittest
@@ -97,16 +99,24 @@ else:
 
 
 class CliTests(unittest.TestCase):
+    @staticmethod
+    def write_lgx(path, name):
+        manifest = json.dumps({"name": name, "version": "test", "type": "core"}).encode()
+        with tarfile.open(path, "w:gz") as archive:
+            info = tarfile.TarInfo("manifest.json")
+            info.size = len(manifest)
+            archive.addfile(info, io.BytesIO(manifest))
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.data = self.root / "agent"
         self.module = self.root / "bonded.lgx"
-        self.module.write_bytes(b"module")
+        self.write_lgx(self.module, "bonded_inbox")
         self.dependencies = []
-        for name in ("delivery", "storage", "lez"):
+        for name in ("delivery_module", "storage_module", "lez_core"):
             package = self.root / f"{name}.lgx"
-            package.write_bytes(name.encode())
+            self.write_lgx(package, name)
             self.dependencies.append(package)
         self.core = self.root / "logoscore"
         self.core.write_text(textwrap.dedent(FAKE_CORE), encoding="utf-8")
@@ -170,6 +180,12 @@ class CliTests(unittest.TestCase):
         self.assertFalse(plan["ready"])
         self.assertFalse(plan["checks"]["owner_key_valid"])
         self.assertFalse(plan["checks"]["limits_positive"])
+
+    def test_plan_rejects_wrong_dependency_package(self):
+        self.write_lgx(self.dependencies[-1], "not_lez_core")
+        plan = self.run_cli("plan", *self.deploy_arguments())["result"]
+        self.assertFalse(plan["ready"])
+        self.assertFalse(plan["checks"]["dependency_package_names_valid"])
 
     def test_stop_restart_and_live_skill_invocation(self):
         self.run_cli("deploy", *self.deploy_arguments())
