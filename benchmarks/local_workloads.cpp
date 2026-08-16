@@ -124,7 +124,7 @@ Json a2aBenchmark()
     MemoryProgramAdapter program;
     A2AService a2a(program, "logos-local");
     const auto [private_key, public_key] = Crypto::generateEd25519KeyPair();
-    AgentCard card{"lf.a2a.v1", "logos-local", "provider", public_key,
+    AgentCard card{"a2a/1.0", "logos-local", "provider", public_key,
                    {"private.process"}, Json::object(), "a2a/cards/provider", 12, 2000, ""};
     a2a.publishCard(A2AService::signCard(std::move(card), private_key), 1000);
 

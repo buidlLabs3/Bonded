@@ -5,12 +5,159 @@
 #include <algorithm>
 #include <chrono>
 #include <limits>
+#include <string_view>
 
 namespace bonded {
 namespace {
 
 constexpr const char* discovery_topic = "/bonded-inbox/1/a2a-card/json";
 constexpr const char* task_topic = "/bonded-inbox/1/a2a-task/json";
+constexpr const char* a2a_protocol = "a2a/1.0";
+constexpr const char* messaging_binding = "LOGOS-MESSAGING";
+constexpr const char* messaging_extension =
+    "https://github.com/buidlLabs3/Bonded/extensions/logos-messaging/v1";
+constexpr const char* payment_extension =
+    "https://github.com/buidlLabs3/Bonded/extensions/lez-payment/v1";
+constexpr const char* task_extension =
+    "https://github.com/buidlLabs3/Bonded/extensions/logos-task/v1";
+
+std::string base64UrlEncode(const unsigned char* data, std::size_t size)
+{
+    static constexpr std::string_view alphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    std::string encoded;
+    encoded.reserve((size * 4 + 2) / 3);
+    for (std::size_t index = 0; index < size; index += 3) {
+        const auto remaining = size - index;
+        const auto block = (static_cast<std::uint32_t>(data[index]) << 16U) |
+                           (remaining > 1
+                                ? static_cast<std::uint32_t>(data[index + 1]) << 8U
+                                : 0U) |
+                           (remaining > 2 ? static_cast<std::uint32_t>(data[index + 2]) : 0U);
+        encoded.push_back(alphabet[(block >> 18U) & 0x3fU]);
+        encoded.push_back(alphabet[(block >> 12U) & 0x3fU]);
+        if (remaining > 1) encoded.push_back(alphabet[(block >> 6U) & 0x3fU]);
+        if (remaining > 2) encoded.push_back(alphabet[block & 0x3fU]);
+    }
+    return encoded;
+}
+
+std::string base64UrlEncode(const std::string& value)
+{
+    return base64UrlEncode(reinterpret_cast<const unsigned char*>(value.data()), value.size());
+}
+
+std::vector<unsigned char> base64UrlDecode(const std::string& value)
+{
+    if (value.find('=') != std::string::npos || value.size() % 4 == 1) {
+        throw DomainError("invalid unpadded base64url value");
+    }
+    auto sextet = [](char character) -> std::uint32_t {
+        if (character >= 'A' && character <= 'Z') return character - 'A';
+        if (character >= 'a' && character <= 'z') return character - 'a' + 26;
+        if (character >= '0' && character <= '9') return character - '0' + 52;
+        if (character == '-') return 62;
+        if (character == '_') return 63;
+        throw DomainError("invalid base64url value");
+    };
+    std::vector<unsigned char> decoded;
+    decoded.reserve(value.size() * 3 / 4);
+    std::uint32_t buffer = 0;
+    int bits = 0;
+    for (const auto character : value) {
+        buffer = (buffer << 6U) | sextet(character);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            decoded.push_back(static_cast<unsigned char>((buffer >> bits) & 0xffU));
+        }
+    }
+    if ((bits == 2 && (buffer & 0x03U) != 0) ||
+        (bits == 4 && (buffer & 0x0fU) != 0)) {
+        throw DomainError("non-canonical base64url value");
+    }
+    return decoded;
+}
+
+std::string protectedHeader(const AgentCard& card)
+{
+    return base64UrlEncode(Json{{"alg", "EdDSA"},
+                                {"kid", card.agent_id},
+                                {"typ", "JOSE"}}
+                               .dump());
+}
+
+Json logosExtensions(const AgentCard& card)
+{
+    return Json::array(
+        {Json{{"uri", messaging_extension},
+              {"description", "Encrypted A2A transport over Logos Messaging"},
+              {"required", true},
+              {"params",
+               Json{{"network", card.network},
+                    {"agentId", card.agent_id},
+                    {"signingPublicKey", card.public_key},
+                    {"encryptionPublicKey",
+                     card.capabilities.value("messaging_encryption_public_key", "")},
+                    {"topic", card.topic},
+                    {"expiresAt", card.expires_at}}}},
+         Json{{"uri", payment_extension},
+              {"description", "Optional LEZ settlement for completed A2A tasks"},
+              {"required", card.task_price > 0},
+              {"params",
+               Json{{"asset", "LEZ"},
+                    {"amount", card.task_price},
+                    {"recipient", card.capabilities.value("payment_recipient", "")}}}}});
+}
+
+Json cardDocument(const AgentCard& card, bool include_signature)
+{
+    Json skills = Json::array();
+    for (const auto& skill : card.skills) {
+        skills.push_back(Json{{"id", skill},
+                              {"name", skill},
+                              {"description", "Bonded agent skill: " + skill},
+                              {"tags", Json::array({"logos", "lez"})}});
+    }
+    Json document{{"name", card.agent_id},
+                  {"description", "Bonded privacy agent on " + card.network},
+                  {"supportedInterfaces",
+                   Json::array({Json{{"url", "logos-messaging:" + card.topic},
+                                     {"protocolBinding", messaging_binding},
+                                     {"protocolVersion", "1.0"}}})},
+                  {"provider",
+                   Json{{"organization", "buidlLabs3"},
+                        {"url", "https://github.com/buidlLabs3/Bonded"}}},
+                  {"version", "0.1.0"},
+                  {"documentationUrl", "https://github.com/buidlLabs3/Bonded"},
+                  {"capabilities",
+                   Json{{"streaming", true},
+                        {"pushNotifications", true},
+                        {"extensions", logosExtensions(card)}}},
+                  {"defaultInputModes", Json::array({"application/json"})},
+                  {"defaultOutputModes", Json::array({"application/json"})},
+                  {"skills", std::move(skills)}};
+    if (include_signature && !card.signature.empty()) {
+        const auto separator = card.signature.find('.');
+        if (separator == std::string::npos || card.signature.find('.', separator + 1) !=
+                                                  std::string::npos) {
+            throw DomainError("invalid Agent Card JWS");
+        }
+        document["signatures"] = Json::array(
+            {Json{{"protected", card.signature.substr(0, separator)},
+                  {"signature", card.signature.substr(separator + 1)}}});
+    }
+    return document;
+}
+
+Json extensionParams(const Json& card, const std::string& uri)
+{
+    for (const auto& extension :
+         card.at("capabilities").value("extensions", Json::array())) {
+        if (extension.value("uri", "") == uri) return extension.at("params");
+    }
+    throw DomainError("Agent Card is missing a required Logos extension");
+}
 
 std::uint64_t unixNow()
 {
@@ -28,12 +175,37 @@ std::uint64_t transportExpiry(std::uint64_t task_expiry, std::uint64_t now_unix)
 
 A2ATaskState taskState(const std::string& state)
 {
-    if (state == "working") return A2ATaskState::Working;
-    if (state == "input-required") return A2ATaskState::InputRequired;
-    if (state == "completed") return A2ATaskState::Completed;
-    if (state == "failed") return A2ATaskState::Failed;
-    if (state == "canceled") return A2ATaskState::Canceled;
+    if (state == "working" || state == "TASK_STATE_WORKING") return A2ATaskState::Working;
+    if (state == "input-required" || state == "TASK_STATE_INPUT_REQUIRED") {
+        return A2ATaskState::InputRequired;
+    }
+    if (state == "completed" || state == "TASK_STATE_COMPLETED") {
+        return A2ATaskState::Completed;
+    }
+    if (state == "failed" || state == "TASK_STATE_FAILED") return A2ATaskState::Failed;
+    if (state == "canceled" || state == "TASK_STATE_CANCELED") {
+        return A2ATaskState::Canceled;
+    }
     throw DomainError("unknown persisted A2A task state");
+}
+
+std::string a2aTaskState(A2ATaskState state)
+{
+    switch (state) {
+    case A2ATaskState::Working: return "TASK_STATE_WORKING";
+    case A2ATaskState::InputRequired: return "TASK_STATE_INPUT_REQUIRED";
+    case A2ATaskState::Completed: return "TASK_STATE_COMPLETED";
+    case A2ATaskState::Failed: return "TASK_STATE_FAILED";
+    case A2ATaskState::Canceled: return "TASK_STATE_CANCELED";
+    }
+    throw DomainError("unknown A2A task state");
+}
+
+std::string a2aOperation(const std::string& action)
+{
+    if (action == "create") return "SendMessage";
+    if (action == "cancel") return "CancelTask";
+    return "StreamResponse";
 }
 
 } // namespace
@@ -52,8 +224,8 @@ A2AService::A2AService(MessagingAdapter& messaging, std::string network,
     }
     if (load_cards) {
         for (const auto& card : load_cards()) {
-            if (!verifyCard(card, 0) || !cards_.emplace(card.agent_id, card).second) {
-                throw DomainError("persisted A2A Agent Card is invalid or duplicated");
+            if (verifyCard(card, 0)) {
+                cards_.emplace(card.agent_id, card);
             }
         }
     }
@@ -67,7 +239,8 @@ A2AService::A2AService(MessagingAdapter& messaging, std::string network,
     messaging_.subscribe(discovery_topic, [this](const std::string& payload) {
         try {
             const auto message = Json::parse(payload);
-            if (message.value("protocol", "") != "lf.a2a.discovery/v1") {
+            if (message.value("protocol", "") != a2a_protocol ||
+                message.value("operation", "") != "AgentCard") {
                 return;
             }
             const auto card = message.at("card").get<AgentCard>();
@@ -101,23 +274,44 @@ void A2AService::configureTransport(const std::string& agent_id,
 
 std::string A2AService::canonicalCard(const AgentCard& card)
 {
-    Json json = card;
-    json.erase("signature");
-    return json.dump();
+    return cardDocument(card, false).dump();
 }
 
 AgentCard A2AService::signCard(AgentCard card, const std::string& private_key)
 {
-    card.signature = Crypto::signEd25519(private_key, canonicalCard(card));
+    const auto header = protectedHeader(card);
+    const auto payload = base64UrlEncode(canonicalCard(card));
+    const auto signature = Crypto::hexDecode(
+        Crypto::signEd25519(private_key, header + "." + payload));
+    card.signature = header + "." + base64UrlEncode(signature.data(), signature.size());
     return card;
 }
 
 bool A2AService::verifyCard(const AgentCard& card, std::uint64_t now_unix) const
 {
-    return card.protocol == "lf.a2a.v1" && card.network == network_ &&
-           !card.agent_id.empty() && !card.public_key.empty() && !card.skills.empty() &&
-           !card.topic.empty() && card.expires_at >= now_unix &&
-           Crypto::verifyEd25519(card.public_key, canonicalCard(card), card.signature);
+    try {
+        const auto separator = card.signature.find('.');
+        if (card.protocol != a2a_protocol || card.network != network_ ||
+            card.agent_id.empty() || card.public_key.empty() || card.skills.empty() ||
+            card.topic.empty() || card.expires_at < now_unix ||
+            card.capabilities.value("messaging_encryption_public_key", "").size() != 64 ||
+            separator == std::string::npos ||
+            card.signature.find('.', separator + 1) != std::string::npos ||
+            card.signature.substr(0, separator) != protectedHeader(card)) {
+            return false;
+        }
+        if (card.task_price > 0 &&
+            card.capabilities.value("payment_recipient", "").size() != 64) {
+            return false;
+        }
+        const auto signature = base64UrlDecode(card.signature.substr(separator + 1));
+        const auto signature_hex = Crypto::hexEncode(signature.data(), signature.size());
+        const auto input = card.signature.substr(0, separator) + "." +
+                           base64UrlEncode(canonicalCard(card));
+        return Crypto::verifyEd25519(card.public_key, input, signature_hex);
+    } catch (const std::exception&) {
+        return false;
+    }
 }
 
 AgentCard A2AService::publishCard(const AgentCard& card, std::uint64_t now_unix)
@@ -127,7 +321,10 @@ AgentCard A2AService::publishCard(const AgentCard& card, std::uint64_t now_unix)
     }
     rememberCard(card);
     messaging_.send(discovery_topic,
-                    Json{{"protocol", "lf.a2a.discovery/v1"}, {"card", card}}.dump());
+                    Json{{"protocol", a2a_protocol},
+                         {"operation", "AgentCard"},
+                         {"card", card}}
+                        .dump());
     return card;
 }
 
@@ -307,7 +504,11 @@ void A2AService::sendTask(const A2ATask& task, const std::string& action,
                             "", "", "", "", "", ""};
     envelope = MessagingService::sealAndSign(
         std::move(envelope),
-        Json{{"protocol", "lf.a2a.task/v1"}, {"action", action}, {"task", task}}.dump(),
+        Json{{"protocol", a2a_protocol},
+             {"operation", a2aOperation(action)},
+             {"logosAction", action},
+             {"task", task}}
+            .dump(),
         encryption_key, signing_private_key_, signing_public_key_);
     static_cast<void>(transport_.send(envelope, now_unix));
 }
@@ -331,8 +532,9 @@ void A2AService::receiveTask(const std::string& payload)
             envelope, unixNow(), network_, agent_id_, encryption_private_key_,
             sender.agent_id, sender.public_key);
         const auto message = Json::parse(plaintext);
-        if (message.at("protocol") != "lf.a2a.task/v1") return;
-        const auto action = message.at("action").get<std::string>();
+        if (message.at("protocol") != a2a_protocol) return;
+        const auto action = message.at("logosAction").get<std::string>();
+        if (message.value("operation", "") != a2aOperation(action)) return;
         const auto task = message.at("task").get<A2ATask>();
         const auto sender_authorized =
             ((action == "create" || action == "cancel" || action == "payment") &&
@@ -468,60 +670,124 @@ std::string toString(A2ATaskState state)
 
 void to_json(Json& json, const AgentCard& card)
 {
-    json = Json{{"protocol", card.protocol},
-                {"network", card.network},
-                {"agent_id", card.agent_id},
-                {"public_key", card.public_key},
-                {"skills", card.skills},
-                {"capabilities", card.capabilities},
-                {"topic", card.topic},
-                {"task_price", card.task_price},
-                {"expires_at", card.expires_at},
-                {"signature", card.signature}};
+    json = cardDocument(card, true);
 }
 
 void from_json(const Json& json, AgentCard& card)
 {
-    json.at("protocol").get_to(card.protocol);
-    json.at("network").get_to(card.network);
-    json.at("agent_id").get_to(card.agent_id);
-    json.at("public_key").get_to(card.public_key);
-    json.at("skills").get_to(card.skills);
-    card.capabilities = json.value("capabilities", Json::object());
-    json.at("topic").get_to(card.topic);
-    card.task_price = json.value("task_price", std::uint64_t{0});
-    json.at("expires_at").get_to(card.expires_at);
-    json.at("signature").get_to(card.signature);
+    if (json.contains("agent_id")) {
+        json.at("protocol").get_to(card.protocol);
+        json.at("network").get_to(card.network);
+        json.at("agent_id").get_to(card.agent_id);
+        json.at("public_key").get_to(card.public_key);
+        json.at("skills").get_to(card.skills);
+        card.capabilities = json.value("capabilities", Json::object());
+        json.at("topic").get_to(card.topic);
+        card.task_price = json.value("task_price", std::uint64_t{0});
+        json.at("expires_at").get_to(card.expires_at);
+        json.at("signature").get_to(card.signature);
+        return;
+    }
+
+    card.protocol = a2a_protocol;
+    card.agent_id = json.at("name").get<std::string>();
+    const auto messaging = extensionParams(json, messaging_extension);
+    const auto payment = extensionParams(json, payment_extension);
+    card.network = messaging.at("network").get<std::string>();
+    if (messaging.at("agentId").get<std::string>() != card.agent_id) {
+        throw DomainError("Agent Card name and Logos agent id differ");
+    }
+    card.public_key = messaging.at("signingPublicKey").get<std::string>();
+    card.topic = messaging.at("topic").get<std::string>();
+    card.expires_at = messaging.at("expiresAt").get<std::uint64_t>();
+    card.task_price = payment.value("amount", std::uint64_t{0});
+    card.capabilities =
+        Json{{"streaming", json.at("capabilities").value("streaming", false)},
+             {"paid_tasks", card.task_price > 0},
+             {"messaging_encryption", "x25519-aes-256-gcm"},
+             {"messaging_encryption_public_key",
+              messaging.at("encryptionPublicKey").get<std::string>()},
+             {"payment_recipient", payment.value("recipient", "")}};
+    card.skills.clear();
+    for (const auto& skill : json.at("skills")) {
+        card.skills.push_back(skill.at("id").get<std::string>());
+    }
+    if (json.at("supportedInterfaces").empty() ||
+        json.at("supportedInterfaces").front().value("protocolBinding", "") !=
+            messaging_binding ||
+        json.value("version", "").empty()) {
+        throw DomainError("unsupported A2A Agent Card interface");
+    }
+    const auto& signature = json.at("signatures").at(0);
+    card.signature = signature.at("protected").get<std::string>() + "." +
+                     signature.at("signature").get<std::string>();
 }
 
 void to_json(Json& json, const A2ATask& task)
 {
+    const Json metadata{{"logos",
+                         Json{{"requester", task.requester},
+                              {"provider", task.provider},
+                              {"skill", task.skill},
+                              {"price", task.price},
+                              {"expiresAt", task.expires_at},
+                              {"paymentReference", task.payment_reference},
+                              {"revision", task.revision}}}};
     json = Json{{"id", task.id},
-                {"requester", task.requester},
-                {"provider", task.provider},
-                {"skill", task.skill},
-                {"input", task.input},
-                {"output", task.output},
-                {"price", task.price},
-                {"expires_at", task.expires_at},
-                {"state", toString(task.state)},
-                {"payment_reference", task.payment_reference},
-                {"revision", task.revision}};
+                {"contextId", task.id},
+                {"status", Json{{"state", a2aTaskState(task.state)}}},
+                {"history",
+                 Json::array({Json{{"messageId", "request:" + task.id},
+                                   {"contextId", task.id},
+                                   {"taskId", task.id},
+                                   {"role", "ROLE_USER"},
+                                   {"parts",
+                                    Json::array({Json{{"data", task.input},
+                                                      {"mediaType", "application/json"}}})},
+                                   {"extensions", Json::array({task_extension})}}})},
+                {"metadata", metadata}};
+    if (!task.output.empty()) {
+        json["artifacts"] =
+            Json::array({Json{{"artifactId", "result:" + task.id},
+                              {"parts",
+                               Json::array({Json{{"data", task.output},
+                                                 {"mediaType", "application/json"}}})}}});
+    }
 }
 
 void from_json(const Json& json, A2ATask& task)
 {
     json.at("id").get_to(task.id);
-    json.at("requester").get_to(task.requester);
-    json.at("provider").get_to(task.provider);
-    json.at("skill").get_to(task.skill);
-    task.input = json.value("input", Json::object());
-    task.output = json.value("output", Json::object());
-    task.price = json.value("price", std::uint64_t{0});
-    json.at("expires_at").get_to(task.expires_at);
-    task.payment_reference = json.value("payment_reference", "");
-    task.revision = json.value("revision", std::uint64_t{0});
-    task.state = taskState(json.at("state").get<std::string>());
+    if (json.contains("requester")) {
+        json.at("requester").get_to(task.requester);
+        json.at("provider").get_to(task.provider);
+        json.at("skill").get_to(task.skill);
+        task.input = json.value("input", Json::object());
+        task.output = json.value("output", Json::object());
+        task.price = json.value("price", std::uint64_t{0});
+        json.at("expires_at").get_to(task.expires_at);
+        task.payment_reference = json.value("payment_reference", "");
+        task.revision = json.value("revision", std::uint64_t{0});
+        task.state = taskState(json.at("state").get<std::string>());
+        return;
+    }
+
+    if (json.value("contextId", "") != task.id) {
+        throw DomainError("A2A task context id must match its id");
+    }
+    const auto& metadata = json.at("metadata").at("logos");
+    task.requester = metadata.at("requester").get<std::string>();
+    task.provider = metadata.at("provider").get<std::string>();
+    task.skill = metadata.at("skill").get<std::string>();
+    task.price = metadata.value("price", std::uint64_t{0});
+    task.expires_at = metadata.at("expiresAt").get<std::uint64_t>();
+    task.payment_reference = metadata.value("paymentReference", "");
+    task.revision = metadata.value("revision", std::uint64_t{0});
+    task.state = taskState(json.at("status").at("state").get<std::string>());
+    task.input = json.at("history").at(0).at("parts").at(0).at("data");
+    task.output = json.contains("artifacts")
+                      ? json.at("artifacts").at(0).at("parts").at(0).at("data")
+                      : Json::object();
 }
 
 } // namespace bonded

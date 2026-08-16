@@ -342,7 +342,7 @@ AgentCard SkillRuntime::ownCard(std::uint64_t now_unix, std::uint64_t expires_at
         (payment_recipient.size() != 64 || Crypto::hexDecode(payment_recipient).size() != 32)) {
         throw DomainError("paid Agent Card requires a 32-byte hex payment recipient");
     }
-    AgentCard card{"lf.a2a.v1",
+    AgentCard card{"a2a/1.0",
                    network_,
                    agent_id_,
                    public_key_,

@@ -91,6 +91,15 @@ Page {
         }
     }
 
+    function taskSkill(task) {
+        return task.metadata && task.metadata.logos ? task.metadata.logos.skill : ""
+    }
+
+    function taskState(task) {
+        return task.status && task.status.state
+                ? task.status.state.replace("TASK_STATE_", "").replace("_", " ") : "UNKNOWN"
+    }
+
     Component.onCompleted: {
         if (bridgeAvailable)
             Qt.callLater(refreshBackend)
@@ -213,10 +222,11 @@ Page {
                     id: taskDelegate
                     required property var modelData
                     width: ListView.view.width
-                    text: taskDelegate.modelData.skill + "  " + taskDelegate.modelData.state
+                    text: root.taskSkill(taskDelegate.modelData) + "  "
+                          + root.taskState(taskDelegate.modelData)
                     Accessible.name: qsTr("Task %1, status %2")
-                                         .arg(taskDelegate.modelData.skill)
-                                         .arg(taskDelegate.modelData.state)
+                                         .arg(root.taskSkill(taskDelegate.modelData))
+                                         .arg(root.taskState(taskDelegate.modelData))
                 }
             }
 

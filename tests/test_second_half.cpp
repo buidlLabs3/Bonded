@@ -110,7 +110,7 @@ AgentCard signedCard(const std::string& id, const std::string& skill,
                      const std::string& private_key, const std::string& public_key,
                      const std::string& encryption_public_key, std::uint64_t expires_at)
 {
-    AgentCard card{"lf.a2a.v1", network, id, public_key, {skill},
+    AgentCard card{"a2a/1.0", network, id, public_key, {skill},
                    Json{{"messaging_encryption", "x25519-aes-256-gcm"},
                         {"messaging_encryption_public_key", encryption_public_key},
                         {"payment_recipient", std::string(64, 'b')}},
@@ -153,12 +153,24 @@ void testA2ALifecycle()
     requester.configureTransport("peer", peer_private, peer_public, peer_encryption_private);
     provider.configureTransport("provider", provider_private, provider_public,
                                 provider_encryption_private);
-    requester.publishCard(signedCard("peer", "private.process", 12, "logos-local",
-                                     peer_private, peer_public, peer_encryption_public,
-                                     now + 1000), now);
-    provider.publishCard(signedCard("provider", "private.process", 12, "logos-local",
-                                    provider_private, provider_public,
-                                    provider_encryption_public, now + 1000), now);
+    const auto peer_card = signedCard("peer", "private.process", 12, "logos-local",
+                                      peer_private, peer_public, peer_encryption_public,
+                                      now + 1000);
+    const auto provider_card = signedCard("provider", "private.process", 12, "logos-local",
+                                          provider_private, provider_public,
+                                          provider_encryption_public, now + 1000);
+    const Json card_document = provider_card;
+    check(card_document.at("supportedInterfaces").at(0).at("protocolVersion") == "1.0" &&
+              card_document.at("skills").at(0).at("id") == "private.process" &&
+              card_document.at("signatures").at(0).contains("protected") &&
+              provider.verifyCard(card_document.get<AgentCard>(), now),
+          "A2A 1.0 Agent Card JSON or JWS round trip is invalid");
+    auto tampered_card = provider_card;
+    ++tampered_card.task_price;
+    check(!provider.verifyCard(tampered_card, now),
+          "tampered A2A Agent Card passed JWS verification");
+    requester.publishCard(peer_card, now);
+    provider.publishCard(provider_card, now);
     check(requester.discover("private.process", now).size() == 2 &&
               provider.discover("private.process", now).size() == 2,
           "two A2A agents did not discover one another");

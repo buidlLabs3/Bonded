@@ -75,12 +75,14 @@ int main()
                  {"expires_at", 1000},
                  {"task_price", 5},
                  {"payment_recipient", std::string(64, 'a')}});
-        check(card.at("protocol") == "lf.a2a.v1", "A2A card skill returned wrong protocol");
-        check(card.at("capabilities").at("messaging_encryption") ==
-                  "x25519-aes-256-gcm" &&
-                  card.at("capabilities").at("messaging_encryption_public_key")
-                          .get<std::string>()
-                          .size() == 64,
+        check(card.at("supportedInterfaces").at(0).at("protocolVersion") == "1.0" &&
+                  card.at("supportedInterfaces").at(0).at("protocolBinding") ==
+                      "LOGOS-MESSAGING" &&
+                  card.at("signatures").at(0).contains("protected") &&
+                  card.at("signatures").at(0).contains("signature"),
+              "A2A 1.0 Agent Card interface or JWS signature is missing");
+        check(card.at("capabilities").at("extensions").at(0).at("params")
+                      .at("encryptionPublicKey").get<std::string>().size() == 64,
               "Agent Card omitted the X25519 messaging key");
         check(registry.invoke("agent.discover", Profile::Vault,
                               Json{{"now_unix", 100}, {"skill", "storage.upload"}})
@@ -89,14 +91,14 @@ int main()
         const auto task = registry.invoke(
             "agent.task", Profile::Vault,
             Json{{"task_id", "task-1"},
-                 {"provider", card.at("agent_id")},
+                 {"provider", card.at("name")},
                  {"skill", "storage.upload"},
                  {"input", Json{{"label", "demo"}}},
                  {"price", 5},
                  {"expires_at", 900},
                  {"now_unix", 100}});
-        check(task.at("state") == "working" &&
-                  task.at("payment_reference").get<std::string>().empty(),
+        check(task.at("status").at("state") == "TASK_STATE_WORKING" &&
+                  task.at("metadata").at("logos").at("paymentReference") == "",
               "A2A task claimed a nonexistent escrow payment");
         const auto completed = registry.invoke(
             "agent.task", Profile::Vault,
@@ -104,7 +106,9 @@ int main()
                  {"task_id", "task-1"},
                  {"now_unix", 101},
                  {"output", Json{{"address", "sha256:result"}}}});
-        check(completed.at("state") == "completed",
+        check(completed.at("status").at("state") == "TASK_STATE_COMPLETED" &&
+                  completed.at("artifacts").at(0).at("parts").at(0).at("data")
+                      .at("address") == "sha256:result",
               "A2A task did not complete without fake escrow calls");
         const auto status = registry.invoke("meta.status", Profile::Vault, Json::object());
         check(status.at("state") == "ready",

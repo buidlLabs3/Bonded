@@ -7,7 +7,7 @@
   "lez_core_module": "cd47b9e137991a3045aceb88f62de4c9db3fcb44",
   "logos_core": "1a4f56fe2b5fe3ed34d7063a4b7376627c8cb838",
   "logos_package_manager": "3ceabe25a2d4733c23517099e0fa0f11ea8861eb",
-  "a2a_schema_package": "lf.a2a.v1",
+  "a2a_schema_package": "a2a/1.0",
   "real_proof_verified": false,
   "testnet_profiles_verified": [],
   "submission_published": false
