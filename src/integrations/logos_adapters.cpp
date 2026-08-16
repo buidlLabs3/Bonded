@@ -588,16 +588,19 @@ void LogosStorageAdapter::downloadDone(const std::string& event_json)
 }
 
 LezWalletAdapter::LezWalletAdapter(std::string account_id, bool is_public, Balance balance,
-                                   Transfer transfer, Poll poll, LoadHistory load_history,
+                                   OwnedTransfer owned_transfer,
+                                   PrivateTransfer private_transfer, Poll poll,
+                                   LoadHistory load_history,
                                    RecordTransfer record_transfer, std::size_t poll_attempts,
                                    std::chrono::milliseconds poll_interval)
     : account_id_(std::move(account_id)), is_public_(is_public), balance_(std::move(balance)),
-      transfer_(std::move(transfer)), poll_(std::move(poll)),
+      owned_transfer_(std::move(owned_transfer)), private_transfer_(std::move(private_transfer)),
+      poll_(std::move(poll)),
       load_history_(std::move(load_history)), record_transfer_(std::move(record_transfer)),
       poll_attempts_(poll_attempts), poll_interval_(poll_interval)
 {
-    if (!isAccountId(account_id_) || !balance_ || !transfer_ || !poll_ || !load_history_ ||
-        !record_transfer_ || poll_attempts_ == 0) {
+    if (!isAccountId(account_id_) || !balance_ || !owned_transfer_ || !private_transfer_ ||
+        !poll_ || !load_history_ || !record_transfer_ || poll_attempts_ == 0) {
         throw DomainError("LEZ wallet account and callbacks are required");
     }
 }
@@ -630,8 +633,31 @@ std::string LezWalletAdapter::send(const std::string& recipient, std::uint64_t a
         throw DomainError("LEZ transfer recipient and positive amount are required");
     }
     const auto hash = transactionHash(
-        transfer_(account_id_, recipient, amountLe16(amount)), "LEZ transfer");
+        owned_transfer_(account_id_, recipient, amountLe16(amount)), "LEZ transfer");
     requireIncluded(hash, poll_, poll_attempts_, poll_interval_, "LEZ transfer");
+    record_transfer_(WalletTransfer{hash, recipient, amount, now_unix});
+    return hash;
+}
+
+std::string LezWalletAdapter::sendPrivate(const std::string& recipient,
+                                          const Json& recipient_keys,
+                                          std::uint64_t amount,
+                                          std::uint64_t now_unix)
+{
+    if (!recipient_keys.is_object()) {
+        throw DomainError("LEZ private transfer recipient keys are invalid");
+    }
+    const auto nullifier_key = recipient_keys.value("nullifier_public_key", "");
+    const auto viewing_key = recipient_keys.value("viewing_public_key", "");
+    if (!isAccountId(recipient) || amount == 0 || !isAccountId(nullifier_key) ||
+        viewing_key.size() % 2 != 0 ||
+        (!viewing_key.empty() && Crypto::hexDecode(viewing_key).empty())) {
+        throw DomainError("LEZ private transfer recipient keys are invalid");
+    }
+    const auto hash = transactionHash(
+        private_transfer_(account_id_, recipient_keys, amountLe16(amount)),
+        "LEZ private transfer");
+    requireIncluded(hash, poll_, poll_attempts_, poll_interval_, "LEZ private transfer");
     record_transfer_(WalletTransfer{hash, recipient, amount, now_unix});
     return hash;
 }

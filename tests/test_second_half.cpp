@@ -117,7 +117,10 @@ AgentCard signedCard(const std::string& id, const std::string& skill,
     AgentCard card{"a2a/1.0", network, id, public_key, {skill},
                    Json{{"messaging_encryption", "x25519-aes-256-gcm"},
                         {"messaging_encryption_public_key", encryption_public_key},
-                        {"payment_recipient", std::string(64, 'b')}},
+                        {"payment_recipient", std::string(64, 'b')},
+                        {"payment_private_keys",
+                         Json{{"nullifier_public_key", std::string(64, 'c')},
+                              {"viewing_public_key", std::string(64, 'd')}}}},
                    "/bonded-inbox/1/a2a-task/json", price, expires_at, ""};
     return A2AService::signCard(std::move(card), private_key);
 }
@@ -131,10 +134,14 @@ void testA2ALifecycle()
     bool settled = false;
     A2AService requester(
         messaging, "logos-local", {}, {}, {}, {},
-        [&](const std::string& recipient, std::uint64_t amount,
+        [&](const std::string& recipient, const Json& recipient_private_keys,
+            std::uint64_t amount,
             std::uint64_t, const std::string& request_id) {
             check(recipient == std::string(64, 'b') && amount == 12,
                   "A2A completion requested the wrong settlement");
+            check(recipient_private_keys.at("nullifier_public_key") ==
+                      std::string(64, 'c'),
+                  "A2A completion omitted private recipient keys");
             if (request_id == "a2a:task-3") {
                 return Json{{"id", "spend:a2a:task-3"},
                             {"state", "pending"},

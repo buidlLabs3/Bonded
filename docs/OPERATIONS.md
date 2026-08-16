@@ -44,7 +44,10 @@ scripts/manage-live-agents.sh deploy \
 ```
 
 Each profile receives its own runtime identity, SQLite database, Storage data,
-Core persistence, and log. Inspect or stop all three without deleting state:
+Core persistence, and log. A paid Agent Card signs the account ID plus its public
+nullifier/viewing keys so another agent can use LEZ's cross-wallet private
+transfer; recovery material and private keys never enter the card. Inspect or
+stop all three without deleting state:
 
 ```bash
 scripts/manage-live-agents.sh health --data-root /absolute/private/path/to/agents

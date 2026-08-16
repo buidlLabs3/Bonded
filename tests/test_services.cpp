@@ -475,6 +475,22 @@ void testSpending()
     check(approval_restart.approve(pending.id, 1030).transfer_id == approved.transfer_id,
           "duplicate approval created another transfer");
 
+    const Json recipient_keys{{"nullifier_public_key", std::string(64, 'a')},
+                              {"viewing_public_key", std::string(64, 'b')}};
+    const auto private_pending = approval_restart.proposePrivate(
+        "private-agent", recipient_keys, 200, 1031, "private-task");
+    const auto restored_private = Json(private_pending).get<bonded::SpendingProposal>();
+    check(restored_private.recipient_private_keys == recipient_keys,
+          "private recipient keys did not survive approval persistence");
+    expectDomainError(
+        [&] {
+            approval_restart.proposePrivate(
+                "private-agent",
+                Json{{"nullifier_public_key", std::string(64, 'c')}},
+                200, 1032, "private-task");
+        },
+        "private payment replay accepted different recipient keys");
+
     const auto expiring = approval_restart.propose("offline-owner", 200, 1040, "task-3");
     approval_restart.expire(1141);
     check(approval_restart.get(expiring.id)->state == ApprovalState::Expired,
@@ -496,6 +512,7 @@ void testLezWalletAdapter()
     const std::string transfer_hash(64, 'c');
     std::vector<bonded::WalletTransfer> history;
     std::string encoded_amount;
+    Json private_recipient_keys;
     std::size_t poll_calls = 0;
     LezWalletAdapter wallet(
         sender, false,
@@ -505,6 +522,13 @@ void testLezWalletAdapter()
         },
         [&](const std::string& from, const std::string& to, const std::string& amount) {
             check(from == sender && to == recipient, "wrong LEZ transfer accounts");
+            encoded_amount = amount;
+            return Json{{"success", true}, {"tx_hash", transfer_hash}, {"error", ""}}.dump();
+        },
+        [&](const std::string& from, const Json& recipient_keys,
+            const std::string& amount) {
+            check(from == sender, "wrong LEZ private transfer sender");
+            private_recipient_keys = recipient_keys;
             encoded_amount = amount;
             return Json{{"success", true}, {"tx_hash", transfer_hash}, {"error", ""}}.dump();
         },
@@ -520,12 +544,24 @@ void testLezWalletAdapter()
     check(wallet.history().size() == 1 && wallet.history().front().amount == 258,
           "LEZ transfer history was not recorded");
     check(poll_calls == 2, "LEZ inclusion check did not retry a pending transaction");
+    poll_calls = 0;
+    const Json recipient_keys{{"nullifier_public_key", std::string(64, 'd')},
+                              {"viewing_public_key", std::string(64, 'e')}};
+    check(wallet.sendPrivate(recipient, recipient_keys, 258, 1001) == transfer_hash &&
+              private_recipient_keys == recipient_keys,
+          "LEZ foreign private transfer did not use recipient public keys");
+    check(wallet.history().size() == 2,
+          "LEZ private transfer history was not recorded");
 
     bool pending_recorded = false;
     LezWalletAdapter pending(
         sender, true, [](const std::string&, bool) { return "10"; },
         [&](const std::string&, const std::string&, const std::string&) {
             return Json{{"success", true}, {"tx_hash", transfer_hash}, {"error", ""}}.dump();
+        },
+        [](const std::string&, const Json&, const std::string&) {
+            return Json{{"success", true}, {"tx_hash", std::string(64, 'c')},
+                        {"error", ""}}.dump();
         },
         [](const std::string&) { return false; },
         [] { return std::vector<bonded::WalletTransfer>{}; },
@@ -538,6 +574,9 @@ void testLezWalletAdapter()
     LezWalletAdapter failing(
         sender, true, [](const std::string&, bool) { return "invalid"; },
         [](const std::string&, const std::string&, const std::string&) {
+            return Json{{"success", false}, {"tx_hash", ""}, {"error", "denied"}}.dump();
+        },
+        [](const std::string&, const Json&, const std::string&) {
             return Json{{"success", false}, {"tx_hash", ""}, {"error", "denied"}}.dump();
         },
         [](const std::string&) { return false; },

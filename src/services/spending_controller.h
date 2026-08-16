@@ -23,6 +23,7 @@ struct SpendingPolicy {
 struct SpendingProposal {
     std::string id;
     std::string recipient;
+    Json recipient_private_keys{Json::object()};
     std::uint64_t amount{0};
     std::uint64_t created_at{0};
     std::uint64_t expires_at{0};
@@ -39,6 +40,10 @@ public:
                        Save save = {});
     SpendingProposal propose(const std::string& recipient, std::uint64_t amount,
                              std::uint64_t now_unix, const std::string& request_id = "");
+    SpendingProposal proposePrivate(const std::string& recipient,
+                                    const Json& recipient_private_keys,
+                                    std::uint64_t amount, std::uint64_t now_unix,
+                                    const std::string& request_id = "");
     SpendingProposal approve(const std::string& proposal_id, std::uint64_t now_unix);
     SpendingProposal deny(const std::string& proposal_id);
     void expire(std::uint64_t now_unix);
@@ -46,6 +51,10 @@ public:
     std::vector<SpendingProposal> list() const;
 
 private:
+    SpendingProposal proposeImpl(const std::string& recipient,
+                                 const Json& recipient_private_keys,
+                                 std::uint64_t amount, std::uint64_t now_unix,
+                                 const std::string& request_id);
     std::uint64_t periodSpend(std::uint64_t now_unix) const;
     WalletAdapter& wallet_;
     SpendingPolicy policy_;

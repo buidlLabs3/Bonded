@@ -114,7 +114,10 @@ int main()
             Json{{"now_unix", 100},
                  {"expires_at", 1000},
                  {"task_price", 5},
-                 {"payment_recipient", std::string(64, 'a')}});
+                 {"payment_recipient", std::string(64, 'a')},
+                 {"payment_private_keys",
+                  Json{{"nullifier_public_key", std::string(64, 'b')},
+                       {"viewing_public_key", std::string(64, 'c')}}}});
         check(card.at("supportedInterfaces").at(0).at("protocolVersion") == "1.0" &&
                   card.at("supportedInterfaces").at(0).at("protocolBinding") ==
                       "LOGOS-MESSAGING" &&
@@ -124,6 +127,10 @@ int main()
         check(card.at("capabilities").at("extensions").at(0).at("params")
                       .at("encryptionPublicKey").get<std::string>().size() == 64,
               "Agent Card omitted the X25519 messaging key");
+        check(card.at("capabilities").at("extensions").at(1).at("params")
+                      .at("recipientPrivateKeys").at("nullifier_public_key") ==
+                  std::string(64, 'b'),
+              "Agent Card omitted the LEZ private recipient keys");
         check(registry.invoke("agent.discover", Profile::Vault,
                               Json{{"now_unix", 100}, {"skill", "storage.upload"}})
                       .size() == 1,

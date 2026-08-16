@@ -14,5 +14,9 @@ files and signer keys must be mode `0600`. Message content and attachment bytes
 never belong on-chain. A model result cannot confiscate a bond: rejection needs
 an explicit owner decision or a deterministic signed policy rule.
 
+Paid Agent Cards contain only LEZ public receiving material (account ID, NPK,
+and VPK). Wallet recovery material, spending keys, and wallet files are never
+published or sent over the A2A channel.
+
 The project is experimental testnet software and is not approved for production
 funds or identities. Only the latest tagged release is supported.

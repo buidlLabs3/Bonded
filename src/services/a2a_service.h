@@ -49,7 +49,7 @@ public:
     using SaveCard = std::function<void(const AgentCard&)>;
     using LoadTasks = std::function<std::vector<A2ATask>()>;
     using SaveTask = std::function<void(const A2ATask&)>;
-    using SettleTask = std::function<Json(const std::string&, std::uint64_t,
+    using SettleTask = std::function<Json(const std::string&, const Json&, std::uint64_t,
                                           std::uint64_t, const std::string&)>;
 
     A2AService(MessagingAdapter& messaging, std::string network,

@@ -253,6 +253,8 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
     : registry_(registry), profile_(profile),
       owner_controller_(configuration.value("owner_controller", false)),
       network_(configuration.value("network", "logos-local")),
+      lez_payment_recipient_(configuration.value("lez_account_id", "")),
+      lez_private_payment_keys_(configuration.value("lez_private_payment_keys", Json::object())),
       owner_public_key_(configuration.value("owner_public_key", "")),
       owner_action_required_(std::move(owner_action_required)),
       database_(database),
@@ -292,10 +294,11 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
                    database->upsertRuntimeRecord("a2a-task", task.id, Json(task));
                }
            },
-           [this](const std::string& recipient, std::uint64_t amount,
+           [this](const std::string& recipient, const Json& recipient_private_keys,
+                  std::uint64_t amount,
                   std::uint64_t now_unix, const std::string& request_id) {
-               const auto proposal =
-                   spending_.propose(recipient, amount, now_unix, request_id);
+               const auto proposal = spending_.proposePrivate(
+                   recipient, recipient_private_keys, amount, now_unix, request_id);
                const auto output = spendingProposalJson(proposal);
                if (proposal.state == ApprovalState::Pending && owner_action_required_) {
                    owner_action_required_(Json{{"type", "spending.approval_required"},
@@ -399,14 +402,27 @@ Json SkillRuntime::spendingProposalJson(const SpendingProposal& proposal)
 
 AgentCard SkillRuntime::ownCard(std::uint64_t now_unix, std::uint64_t expires_at,
                                 std::uint64_t task_price,
-                                const std::string& payment_recipient) const
+                                const std::string& payment_recipient,
+                                const Json& payment_private_keys) const
 {
     if (expires_at <= now_unix) {
         throw DomainError("Agent Card expiry must be in the future");
     }
+    auto private_keys = payment_private_keys;
+    if (private_keys.empty() && payment_recipient == lez_payment_recipient_) {
+        private_keys = lez_private_payment_keys_;
+    }
+    if (!private_keys.is_object()) {
+        throw DomainError("LEZ private payment keys must be an object");
+    }
+    const auto nullifier_key = private_keys.value("nullifier_public_key", "");
+    const auto viewing_key = private_keys.value("viewing_public_key", "");
     if (task_price > 0 &&
-        (payment_recipient.size() != 64 || Crypto::hexDecode(payment_recipient).size() != 32)) {
-        throw DomainError("paid Agent Card requires a 32-byte hex payment recipient");
+        (payment_recipient.size() != 64 || Crypto::hexDecode(payment_recipient).size() != 32 ||
+         nullifier_key.size() != 64 ||
+         Crypto::hexDecode(nullifier_key).size() != 32 || viewing_key.size() % 2 != 0 ||
+         (!viewing_key.empty() && Crypto::hexDecode(viewing_key).empty()))) {
+        throw DomainError("paid Agent Card requires a private LEZ payment recipient");
     }
     AgentCard card{"a2a/1.0",
                    network_,
@@ -417,7 +433,8 @@ AgentCard SkillRuntime::ownCard(std::uint64_t now_unix, std::uint64_t expires_at
                         {"paid_tasks", true},
                         {"messaging_encryption", "x25519-aes-256-gcm"},
                         {"messaging_encryption_public_key", encryption_public_key_},
-                        {"payment_recipient", payment_recipient}},
+                        {"payment_recipient", payment_recipient},
+                        {"payment_private_keys", private_keys}},
                    "/bonded-inbox/1/a2a-task/json",
                    task_price,
                    expires_at,
@@ -477,10 +494,19 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
         return Json{{"balance", wallet_adapter_->balance()}, {"asset", "LEZ"}};
     }
     if (name == "wallet.send") {
-        const auto proposal = spending_.propose(input.at("recipient").get<std::string>(),
-                                                input.at("amount").get<std::uint64_t>(),
-                                                input.at("now_unix").get<std::uint64_t>(),
-                                                input.at("request_id").get<std::string>());
+        const auto recipient = input.at("recipient").get<std::string>();
+        const auto recipient_private_keys =
+            input.value("recipient_private_keys", Json::object());
+        const auto proposal = recipient_private_keys.empty()
+                                  ? spending_.propose(
+                                        recipient, input.at("amount").get<std::uint64_t>(),
+                                        input.at("now_unix").get<std::uint64_t>(),
+                                        input.at("request_id").get<std::string>())
+                                  : spending_.proposePrivate(
+                                        recipient, recipient_private_keys,
+                                        input.at("amount").get<std::uint64_t>(),
+                                        input.at("now_unix").get<std::uint64_t>(),
+                                        input.at("request_id").get<std::string>());
         const auto output = spendingProposalJson(proposal);
         if (proposal.state == ApprovalState::Pending && owner_action_required_) {
             owner_action_required_(Json{{"type", "spending.approval_required"},
@@ -519,7 +545,8 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
         }
         const auto card = ownCard(now, input.at("expires_at").get<std::uint64_t>(),
                                   input.value("task_price", std::uint64_t{0}),
-                                  input.value("payment_recipient", ""));
+                                  input.value("payment_recipient", ""),
+                                  input.value("payment_private_keys", Json::object()));
         if (input.value("publish", true)) {
             a2a_.publishCard(card, now);
         }

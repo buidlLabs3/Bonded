@@ -101,13 +101,16 @@ private:
 class LezWalletAdapter : public WalletAdapter {
 public:
     using Balance = std::function<std::string(const std::string&, bool)>;
-    using Transfer =
+    using OwnedTransfer =
         std::function<std::string(const std::string&, const std::string&, const std::string&)>;
+    using PrivateTransfer =
+        std::function<std::string(const std::string&, const Json&, const std::string&)>;
     using Poll = std::function<bool(const std::string&)>;
     using LoadHistory = std::function<std::vector<WalletTransfer>()>;
     using RecordTransfer = std::function<void(const WalletTransfer&)>;
 
-    LezWalletAdapter(std::string account_id, bool is_public, Balance balance, Transfer transfer,
+    LezWalletAdapter(std::string account_id, bool is_public, Balance balance,
+                     OwnedTransfer owned_transfer, PrivateTransfer private_transfer,
                      Poll poll, LoadHistory load_history, RecordTransfer record_transfer,
                      std::size_t poll_attempts = 120,
                      std::chrono::milliseconds poll_interval = std::chrono::seconds(1));
@@ -115,13 +118,16 @@ public:
     std::uint64_t balance() const override;
     std::string send(const std::string& recipient, std::uint64_t amount,
                      std::uint64_t now_unix) override;
+    std::string sendPrivate(const std::string& recipient, const Json& recipient_keys,
+                            std::uint64_t amount, std::uint64_t now_unix) override;
     std::vector<WalletTransfer> history() const override;
 
 private:
     std::string account_id_;
     bool is_public_{false};
     Balance balance_;
-    Transfer transfer_;
+    OwnedTransfer owned_transfer_;
+    PrivateTransfer private_transfer_;
     Poll poll_;
     LoadHistory load_history_;
     RecordTransfer record_transfer_;

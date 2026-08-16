@@ -231,7 +231,7 @@ void BondedInboxImpl::onContextReady()
 std::string BondedInboxImpl::initialize(const std::string& configuration_json)
 {
     try {
-        const auto configuration = Json::parse(configuration_json);
+        auto configuration = Json::parse(configuration_json);
         if (skill_runtime_) {
             throw bonded::DomainError("runtime is already initialized");
         }
@@ -284,6 +284,13 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
             if (account_kind != "private-owned") {
                 throw bonded::DomainError("live agents require a private-owned LEZ account");
             }
+            const auto payment_keys = Json::parse(
+                modules().lez_core.get_private_account_keys(account_id));
+            if (!payment_keys.is_object() ||
+                payment_keys.value("nullifier_public_key", "").size() != 64) {
+                throw bonded::DomainError("LEZ Core returned invalid private account keys");
+            }
+            configuration["lez_private_payment_keys"] = payment_keys;
             wallet_adapter = std::make_unique<bonded::LezWalletAdapter>(
                 account_id, false,
                 [this](const std::string& account, bool public_account) {
@@ -292,6 +299,11 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
                 [this](const std::string& from, const std::string& to,
                        const std::string& amount) {
                     return modules().lez_core.transfer_private_owned(from, to, amount);
+                },
+                [this](const std::string& from, const Json& recipient_keys,
+                       const std::string& amount) {
+                    return modules().lez_core.transfer_private(
+                        from, recipient_keys.dump(), amount);
                 },
                 [this](const std::string& hash) {
                     return modules().lez_core.poll_transaction_status(hash);

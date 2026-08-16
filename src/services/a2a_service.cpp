@@ -21,6 +21,20 @@ constexpr const char* payment_extension =
 constexpr const char* task_extension =
     "https://github.com/buidlLabs3/Bonded/extensions/logos-task/v1";
 
+bool validPrivatePaymentKeys(const Json& keys)
+{
+    try {
+        if (!keys.is_object()) return false;
+        const auto nullifier_key = keys.value("nullifier_public_key", "");
+        const auto viewing_key = keys.value("viewing_public_key", "");
+        return nullifier_key.size() == 64 && Crypto::hexDecode(nullifier_key).size() == 32 &&
+               viewing_key.size() % 2 == 0 &&
+               (viewing_key.empty() || !Crypto::hexDecode(viewing_key).empty());
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 std::string base64UrlEncode(const unsigned char* data, std::size_t size)
 {
     static constexpr std::string_view alphabet =
@@ -107,7 +121,9 @@ Json logosExtensions(const AgentCard& card)
               {"params",
                Json{{"asset", "LEZ"},
                     {"amount", card.task_price},
-                    {"recipient", card.capabilities.value("payment_recipient", "")}}}}});
+                    {"recipient", card.capabilities.value("payment_recipient", "")},
+                    {"recipientPrivateKeys",
+                     card.capabilities.value("payment_private_keys", Json::object())}}}}});
 }
 
 Json cardDocument(const AgentCard& card, bool include_signature)
@@ -301,7 +317,9 @@ bool A2AService::verifyCard(const AgentCard& card, std::uint64_t now_unix) const
             return false;
         }
         if (card.task_price > 0 &&
-            card.capabilities.value("payment_recipient", "").size() != 64) {
+            (card.capabilities.value("payment_recipient", "").size() != 64 ||
+             !validPrivatePaymentKeys(
+                 card.capabilities.value("payment_private_keys", Json::object())))) {
             return false;
         }
         const auto signature = base64UrlDecode(card.signature.substr(separator + 1));
@@ -574,7 +592,10 @@ void A2AService::receiveTask(const std::string& payload)
         if (settle) {
             const auto recipient =
                 sender.capabilities.at("payment_recipient").get<std::string>();
-            const auto proposal = settle_task_(recipient, task.price, unixNow(),
+            const auto recipient_private_keys =
+                sender.capabilities.at("payment_private_keys");
+            const auto proposal = settle_task_(recipient, recipient_private_keys,
+                                               task.price, unixNow(),
                                                "a2a:" + task.id);
             const auto state = proposal.at("state").get<std::string>();
             updated.payment_reference =
@@ -707,7 +728,9 @@ void from_json(const Json& json, AgentCard& card)
              {"messaging_encryption", "x25519-aes-256-gcm"},
              {"messaging_encryption_public_key",
               messaging.at("encryptionPublicKey").get<std::string>()},
-             {"payment_recipient", payment.value("recipient", "")}};
+             {"payment_recipient", payment.value("recipient", "")},
+             {"payment_private_keys",
+              payment.value("recipientPrivateKeys", Json::object())}};
     card.skills.clear();
     for (const auto& skill : json.at("skills")) {
         card.skills.push_back(skill.at("id").get<std::string>());

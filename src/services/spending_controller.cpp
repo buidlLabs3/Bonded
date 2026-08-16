@@ -63,7 +63,21 @@ SpendingProposal SpendingController::propose(const std::string& recipient, std::
                                              std::uint64_t now_unix,
                                              const std::string& request_id)
 {
-    if (recipient.empty() || amount == 0) {
+    return proposeImpl(recipient, Json::object(), amount, now_unix, request_id);
+}
+
+SpendingProposal SpendingController::proposePrivate(
+    const std::string& recipient, const Json& recipient_private_keys,
+    std::uint64_t amount, std::uint64_t now_unix, const std::string& request_id)
+{
+    return proposeImpl(recipient, recipient_private_keys, amount, now_unix, request_id);
+}
+
+SpendingProposal SpendingController::proposeImpl(
+    const std::string& recipient, const Json& recipient_private_keys,
+    std::uint64_t amount, std::uint64_t now_unix, const std::string& request_id)
+{
+    if (recipient.empty() || amount == 0 || !recipient_private_keys.is_object()) {
         throw DomainError("spending recipient and positive amount are required");
     }
     std::lock_guard lock(mutex_);
@@ -71,7 +85,9 @@ SpendingProposal SpendingController::propose(const std::string& recipient, std::
     if (!requested_id.empty()) {
         const auto existing = proposals_.find(requested_id);
         if (existing != proposals_.end()) {
-            if (existing->second.recipient != recipient || existing->second.amount != amount) {
+            if (existing->second.recipient != recipient ||
+                existing->second.recipient_private_keys != recipient_private_keys ||
+                existing->second.amount != amount) {
                 throw DomainError("spending request id was reused with different parameters");
             }
             return existing->second;
@@ -82,11 +98,14 @@ SpendingProposal SpendingController::propose(const std::string& recipient, std::
     if (amount <= policy_.per_transaction && amount <= period_available) {
         const std::string id = requested_id.empty() ? "spend-" + std::to_string(++sequence_)
                                                     : requested_id;
-        SpendingProposal proposal{id, recipient, amount, now_unix, now_unix,
+        SpendingProposal proposal{id, recipient, recipient_private_keys, amount, now_unix, now_unix,
                                   ApprovalState::Approved, ""};
         proposals_.emplace(id, proposal);
         if (save_) save_(proposal);
-        proposal.transfer_id = wallet_.send(recipient, amount, now_unix);
+        proposal.transfer_id = recipient_private_keys.empty()
+                                   ? wallet_.send(recipient, amount, now_unix)
+                                   : wallet_.sendPrivate(recipient, recipient_private_keys,
+                                                         amount, now_unix);
         proposal.state = ApprovalState::Executed;
         proposals_.at(id) = proposal;
         if (save_) save_(proposal);
@@ -94,7 +113,7 @@ SpendingProposal SpendingController::propose(const std::string& recipient, std::
     }
     const std::string id = requested_id.empty() ? "approval-" + std::to_string(++sequence_)
                                                 : requested_id;
-    SpendingProposal pending{id, recipient, amount, now_unix,
+    SpendingProposal pending{id, recipient, recipient_private_keys, amount, now_unix,
                              approvalExpiry(now_unix, policy_.approval_timeout_seconds),
                              ApprovalState::Pending, ""};
     proposals_.emplace(id, pending);
@@ -122,7 +141,11 @@ SpendingProposal SpendingController::approve(const std::string& proposal_id,
     }
     proposal.state = ApprovalState::Approved;
     if (save_) save_(proposal);
-    proposal.transfer_id = wallet_.send(proposal.recipient, proposal.amount, now_unix);
+    proposal.transfer_id = proposal.recipient_private_keys.empty()
+                               ? wallet_.send(proposal.recipient, proposal.amount, now_unix)
+                               : wallet_.sendPrivate(proposal.recipient,
+                                                     proposal.recipient_private_keys,
+                                                     proposal.amount, now_unix);
     proposal.state = ApprovalState::Executed;
     if (save_) save_(proposal);
     return proposal;
@@ -192,6 +215,7 @@ void to_json(Json& json, const SpendingProposal& proposal)
 {
     json = Json{{"id", proposal.id},
                 {"recipient", proposal.recipient},
+                {"recipient_private_keys", proposal.recipient_private_keys},
                 {"amount", proposal.amount},
                 {"created_at", proposal.created_at},
                 {"expires_at", proposal.expires_at},
@@ -203,6 +227,7 @@ void from_json(const Json& json, SpendingProposal& proposal)
 {
     json.at("id").get_to(proposal.id);
     json.at("recipient").get_to(proposal.recipient);
+    proposal.recipient_private_keys = json.value("recipient_private_keys", Json::object());
     json.at("amount").get_to(proposal.amount);
     json.at("created_at").get_to(proposal.created_at);
     json.at("expires_at").get_to(proposal.expires_at);

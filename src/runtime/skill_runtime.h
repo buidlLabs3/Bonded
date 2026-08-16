@@ -59,7 +59,8 @@ private:
     Json handler(const std::string& name, const Json& input);
     AgentCard ownCard(std::uint64_t now_unix, std::uint64_t expires_at,
                       std::uint64_t task_price,
-                      const std::string& payment_recipient) const;
+                      const std::string& payment_recipient,
+                      const Json& payment_private_keys) const;
     static Json spendingProposalJson(const SpendingProposal& proposal);
     static std::string ownerRequestTopic(const std::string& agent_id);
     static std::string ownerResponseTopic(const std::string& agent_id);
@@ -76,6 +77,8 @@ private:
     std::string encryption_private_key_;
     std::string encryption_public_key_;
     std::string storage_key_;
+    std::string lez_payment_recipient_;
+    Json lez_private_payment_keys_{Json::object()};
     std::string owner_public_key_;
     std::function<void(const Json&)> owner_action_required_;
     OwnerCommand owner_command_;

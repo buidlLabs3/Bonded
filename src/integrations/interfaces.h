@@ -39,6 +39,12 @@ public:
     virtual std::uint64_t balance() const = 0;
     virtual std::string send(const std::string& recipient, std::uint64_t amount,
                              std::uint64_t now_unix) = 0;
+    virtual std::string sendPrivate(const std::string& recipient, const Json& recipient_keys,
+                                    std::uint64_t amount, std::uint64_t now_unix)
+    {
+        (void)recipient_keys;
+        return send(recipient, amount, now_unix);
+    }
     virtual std::vector<WalletTransfer> history() const = 0;
 };
 
