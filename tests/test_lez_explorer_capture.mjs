@@ -14,11 +14,11 @@ import {
   waitForRenderedPage,
 } from "../tools/lez_explorer_capture.mjs";
 
-const tx = "d033cfe9a59a97824711f2a4d3df571281adc739e196cba1a7cf2264958298ad";
+const tx = "fc88b2bad2b51026fb97c6cc8b4943ead59f8a3cc0e515f9f058f9e49fb11ea9";
 
 test("rendered explorer pages require exact official URLs and text", () => {
   const url = `https://explorer.testnet.lez.logos.co/transaction/${tx}`;
-  validatePage(url, `${tx}\nProgram Deployment Transaction\n370032 bytes`, [tx, "370032 bytes"]);
+  validatePage(url, `${tx}\nProgram Deployment Transaction\n368324 bytes`, [tx, "368324 bytes"]);
   assert.throws(() => validatePage("https://example.com/transaction/x", "x", ["x"]), /exact official/);
   assert.throws(() => validatePage(url, "Transaction not found", [tx]), /not-found/);
   assert.throws(() => validatePage(url, "loading", [tx]), /omitted/);

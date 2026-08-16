@@ -6,7 +6,7 @@
       "id": "settlement-program-deployment",
       "kind": "program-deployment",
       "observations": [
-        "evidence/testnet/deployment/settlement-program-v2-primary.json",
+        "evidence/testnet/settlement-program.json",
         "evidence/testnet/audits/settlement-program-v2-independent.json"
       ],
       "operation": "program-deployment",
