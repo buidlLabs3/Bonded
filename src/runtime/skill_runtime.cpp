@@ -5,6 +5,12 @@
 #include "security/crypto.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <filesystem>
+#include <fcntl.h>
+#include <fstream>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace bonded {
 namespace {
@@ -30,6 +36,128 @@ Adapter& requireAdapter(const std::unique_ptr<Adapter>& adapter, const char* nam
         throw DomainError(std::string(name) + " runtime adapter is required");
     }
     return *adapter;
+}
+
+struct RuntimeIdentity {
+    std::string private_key;
+    std::string public_key;
+    std::string encryption_private_key;
+    std::string encryption_public_key;
+    std::string storage_key;
+};
+
+void requireKey(const std::string& key, const char* name)
+{
+    if (key.size() != 64 || Crypto::hexDecode(key).size() != 32) {
+        throw DomainError(std::string("runtime identity contains an invalid ") + name);
+    }
+}
+
+RuntimeIdentity parseIdentity(const Json& value)
+{
+    RuntimeIdentity identity{value.at("signing_private_key").get<std::string>(),
+                             value.at("signing_public_key").get<std::string>(),
+                             value.at("encryption_private_key").get<std::string>(),
+                             value.at("encryption_public_key").get<std::string>(),
+                             value.at("storage_key").get<std::string>()};
+    requireKey(identity.private_key, "signing private key");
+    requireKey(identity.public_key, "signing public key");
+    requireKey(identity.encryption_private_key, "encryption private key");
+    requireKey(identity.encryption_public_key, "encryption public key");
+    requireKey(identity.storage_key, "storage key");
+    const std::string challenge = "bonded-inbox/identity-check/v1";
+    if (!Crypto::verifyEd25519(identity.public_key, challenge,
+                               Crypto::signEd25519(identity.private_key, challenge))) {
+        throw DomainError("runtime identity signing keys do not match");
+    }
+    return identity;
+}
+
+RuntimeIdentity readIdentity(const std::filesystem::path& path)
+{
+    struct stat status {};
+    if (::lstat(path.c_str(), &status) != 0 || !S_ISREG(status.st_mode)) {
+        throw DomainError("runtime identity must be a regular file");
+    }
+    if ((status.st_mode & 0077) != 0) {
+        throw DomainError("runtime identity permissions must be 0600");
+    }
+    std::ifstream input(path);
+    if (!input) {
+        throw DomainError("cannot read runtime identity");
+    }
+    Json value;
+    input >> value;
+    if (value.value("schema_version", 0) != 1) {
+        throw DomainError("runtime identity has an unsupported schema");
+    }
+    return parseIdentity(value);
+}
+
+RuntimeIdentity createIdentity(const std::filesystem::path& path)
+{
+    const auto signing = Crypto::generateEd25519KeyPair();
+    const auto encryption = Crypto::generateX25519KeyPair();
+    RuntimeIdentity identity{signing.first, signing.second, encryption.first,
+                             encryption.second, Crypto::randomHex(32)};
+    const Json value{{"schema_version", 1},
+                     {"signing_private_key", identity.private_key},
+                     {"signing_public_key", identity.public_key},
+                     {"encryption_private_key", identity.encryption_private_key},
+                     {"encryption_public_key", identity.encryption_public_key},
+                     {"storage_key", identity.storage_key}};
+    const auto payload = value.dump(2) + "\n";
+    const auto descriptor =
+        ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+    if (descriptor < 0) {
+        if (errno == EEXIST) {
+            return readIdentity(path);
+        }
+        throw DomainError("cannot create runtime identity");
+    }
+    std::size_t offset = 0;
+    while (offset < payload.size()) {
+        const auto written = ::write(descriptor, payload.data() + offset, payload.size() - offset);
+        if (written < 0 && errno == EINTR) {
+            continue;
+        }
+        if (written <= 0) {
+            ::close(descriptor);
+            std::error_code ignored;
+            std::filesystem::remove(path, ignored);
+            throw DomainError("cannot write runtime identity");
+        }
+        offset += static_cast<std::size_t>(written);
+    }
+    const auto sync_result = ::fsync(descriptor);
+    const auto close_result = ::close(descriptor);
+    if (sync_result != 0 || close_result != 0) {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+        throw DomainError("cannot persist runtime identity");
+    }
+    return identity;
+}
+
+RuntimeIdentity runtimeIdentity(const Json& configuration)
+{
+    if (!configuration.contains("data_directory")) {
+        const auto signing = Crypto::generateEd25519KeyPair();
+        const auto encryption = Crypto::generateX25519KeyPair();
+        return {signing.first, signing.second, encryption.first, encryption.second,
+                Crypto::randomHex(32)};
+    }
+    const auto directory =
+        std::filesystem::path(configuration.at("data_directory").get<std::string>());
+    if (directory.empty()) {
+        throw DomainError("runtime identity data_directory is empty");
+    }
+    std::filesystem::create_directories(directory);
+    std::filesystem::permissions(
+        directory, std::filesystem::perms::owner_all,
+        std::filesystem::perm_options::replace);
+    const auto path = directory / "identity.json";
+    return std::filesystem::exists(path) ? readIdentity(path) : createIdentity(path);
 }
 
 } // namespace
@@ -59,7 +187,6 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
                            RuntimeAdapters adapters)
     : registry_(registry), profile_(profile),
       network_(configuration.value("network", "logos-local")),
-      storage_key_(Crypto::randomHex(32)),
       owner_action_required_(std::move(owner_action_required)),
       messaging_adapter_(std::move(adapters.messaging)),
       storage_adapter_(std::move(adapters.storage)),
@@ -87,12 +214,12 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
                                                std::uint64_t{3600})}},
                      configuration.value("owner_public_key", ""))
 {
-    const auto keys = Crypto::generateEd25519KeyPair();
-    private_key_ = keys.first;
-    public_key_ = keys.second;
-    const auto encryption_keys = Crypto::generateX25519KeyPair();
-    encryption_private_key_ = encryption_keys.first;
-    encryption_public_key_ = encryption_keys.second;
+    const auto identity = runtimeIdentity(configuration);
+    private_key_ = identity.private_key;
+    public_key_ = identity.public_key;
+    encryption_private_key_ = identity.encryption_private_key;
+    encryption_public_key_ = identity.encryption_public_key;
+    storage_key_ = identity.storage_key;
     agent_id_ = "npk:" + Crypto::sha256(public_key_).substr(0, 32);
 }
 

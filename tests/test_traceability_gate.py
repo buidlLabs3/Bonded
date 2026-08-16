@@ -28,6 +28,34 @@ class TraceabilityGateTests(unittest.TestCase):
         )
         return path
 
+    def readiness(self, directory: str, **updates) -> Path:
+        criterion = {
+            "id": "REQ-01",
+            "requirement": "Requirement",
+            "owner": "release",
+            "required_scope": "clean-clone",
+            "status": "open",
+            "verification_command": "scripts/verify.sh",
+            "pass_condition": "The verification command passes.",
+            "evidence": [],
+            "gap": "Not verified yet.",
+        }
+        criterion.update(updates)
+        path = Path(directory) / "readiness.json"
+        path.write_text(
+            __import__("json").dumps(
+                {
+                    "schema_version": 1,
+                    "specification": "https://example.test/spec",
+                    "release_commit": "abc",
+                    "overall_status": "not-ready",
+                    "criteria": [criterion],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
     def test_incomplete_matrix_needs_no_testnet_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             report = traceability.audit(
@@ -60,6 +88,37 @@ class TraceabilityGateTests(unittest.TestCase):
                 traceability.rows(self.matrix(directory, "done"))
             with self.assertRaisesRegex(traceability.TraceabilityGateError, "duplicate"):
                 traceability.rows(self.matrix(directory, "planned", duplicate=True))
+
+    def test_readiness_requires_complete_fields_and_existing_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            document = traceability.readiness(self.readiness(directory), Path(directory))
+            self.assertEqual(document["criteria"][0]["id"], "REQ-01")
+            with self.assertRaisesRegex(traceability.TraceabilityGateError, "missing evidence"):
+                traceability.readiness(
+                    self.readiness(directory, evidence=["missing.json"]), Path(directory)
+                )
+
+    def test_verified_readiness_claim_triggers_testnet_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}", encoding="utf-8")
+            audit = self.readiness(
+                directory,
+                status="verified-testnet",
+                required_scope="public-testnet",
+                evidence=["evidence.json"],
+            )
+            fake_gate = mock.Mock()
+            fake_gate.audit.return_value = {"status": "pass", "failed_count": 0}
+            with mock.patch.object(traceability, "_load_evidence_gate", return_value=fake_gate):
+                report = traceability.audit(
+                    self.matrix(directory, "implemented"),
+                    Path("index.json"),
+                    Path(directory),
+                    audit,
+                )
+            self.assertEqual(report["readiness_verified_testnet_claims"], ["REQ-01"])
+            self.assertEqual(report["evidence_gate"], "pass")
 
 
 if __name__ == "__main__":

@@ -12,8 +12,30 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TRACEABILITY = REPO_ROOT / "docs/OPERATIONS.md"
+DEFAULT_READINESS = REPO_ROOT / "release/submission-readiness.json"
 ROW = re.compile(r"^\|\s*([^|]+?)\s*\|(?:[^|]*\|){3}\s*([^|]+?)\s*\|\s*$")
 ALLOWED_STATUSES = {"planned", "implemented", "verified-local", "verified-testnet"}
+READINESS_STATUSES = {"open", "verified-local", "verified-testnet", "owner-gated"}
+READINESS_SCOPES = {
+    "local-adapter",
+    "standalone-lez",
+    "public-testnet",
+    "live-logos-core",
+    "ci-real-proof",
+    "clean-clone",
+    "submission",
+}
+REQUIRED_CRITERION_FIELDS = {
+    "id",
+    "requirement",
+    "owner",
+    "required_scope",
+    "status",
+    "verification_command",
+    "pass_condition",
+    "evidence",
+    "gap",
+}
 
 
 def _load_evidence_gate():
@@ -56,11 +78,66 @@ def rows(path: Path) -> list[dict]:
     return result
 
 
-def audit(traceability: Path, evidence_index: Path, root: Path) -> dict:
+def readiness(path: Path, root: Path) -> dict:
+    try:
+        document = json.loads(path.resolve(strict=True).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TraceabilityGateError(f"could not read readiness audit: {exc}") from exc
+    if document.get("schema_version") != 1 or document.get("overall_status") != "not-ready":
+        raise TraceabilityGateError("readiness audit must use schema 1 and remain not-ready")
+    criteria = document.get("criteria")
+    if not isinstance(criteria, list) or not criteria:
+        raise TraceabilityGateError("readiness audit contains no criteria")
+    seen = set()
+    for criterion in criteria:
+        if not isinstance(criterion, dict) or set(criterion) != REQUIRED_CRITERION_FIELDS:
+            raise TraceabilityGateError("readiness criterion has missing or unsupported fields")
+        identifier = criterion["id"]
+        if not isinstance(identifier, str) or not identifier or identifier in seen:
+            raise TraceabilityGateError(f"invalid or duplicate readiness criterion: {identifier}")
+        seen.add(identifier)
+        for field in ("requirement", "owner", "verification_command", "pass_condition", "gap"):
+            if not isinstance(criterion[field], str) or not criterion[field].strip():
+                raise TraceabilityGateError(f"readiness criterion {identifier} has empty {field}")
+        if criterion["status"] not in READINESS_STATUSES:
+            raise TraceabilityGateError(
+                f"readiness criterion {identifier} has unsupported status: {criterion['status']}"
+            )
+        if criterion["required_scope"] not in READINESS_SCOPES:
+            raise TraceabilityGateError(
+                f"readiness criterion {identifier} has unsupported scope: {criterion['required_scope']}"
+            )
+        evidence = criterion["evidence"]
+        if not isinstance(evidence, list) or any(not isinstance(item, str) for item in evidence):
+            raise TraceabilityGateError(f"readiness criterion {identifier} has invalid evidence")
+        for item in evidence:
+            candidate = (root / item).resolve()
+            if root.resolve() not in candidate.parents or not candidate.is_file():
+                raise TraceabilityGateError(
+                    f"readiness criterion {identifier} references missing evidence: {item}"
+                )
+        if criterion["status"].startswith("verified-") and not evidence:
+            raise TraceabilityGateError(
+                f"verified readiness criterion {identifier} must reference evidence"
+            )
+    return document
+
+
+def audit(
+    traceability: Path, evidence_index: Path, root: Path, readiness_path: Path | None = None
+) -> dict:
     requirements = rows(traceability)
+    readiness_document = readiness(readiness_path, root) if readiness_path is not None else None
     claimed = [item["id"] for item in requirements if item["status"] == "verified-testnet"]
+    readiness_claimed = []
+    if readiness_document is not None:
+        readiness_claimed = [
+            item["id"]
+            for item in readiness_document["criteria"]
+            if item["status"] == "verified-testnet"
+        ]
     evidence_report = None
-    if claimed:
+    if claimed or readiness_claimed:
         gate = _load_evidence_gate()
         evidence_report = gate.audit(evidence_index, root)
         if evidence_report["status"] != "pass":
@@ -72,6 +149,10 @@ def audit(traceability: Path, evidence_index: Path, root: Path) -> dict:
         "status": "pass",
         "requirement_count": len(requirements),
         "verified_testnet_claims": claimed,
+        "readiness_criterion_count": (
+            len(readiness_document["criteria"]) if readiness_document is not None else 0
+        ),
+        "readiness_verified_testnet_claims": readiness_claimed,
         "evidence_gate": "pass" if evidence_report is not None else "not-required",
     }
 
@@ -79,6 +160,7 @@ def audit(traceability: Path, evidence_index: Path, root: Path) -> dict:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description="Validate public-evidence traceability claims")
     result.add_argument("--traceability", type=Path, default=DEFAULT_TRACEABILITY)
+    result.add_argument("--readiness", type=Path, default=DEFAULT_READINESS)
     result.add_argument(
         "--evidence-index",
         type=Path,
@@ -90,7 +172,12 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     try:
-        print(json.dumps(audit(args.traceability, args.evidence_index, REPO_ROOT), sort_keys=True))
+        print(
+            json.dumps(
+                audit(args.traceability, args.evidence_index, REPO_ROOT, args.readiness),
+                sort_keys=True,
+            )
+        )
         return 0
     except (TraceabilityGateError, OSError, RuntimeError, TypeError, ValueError) as exc:
         print(json.dumps({"schema_version": 1, "status": "fail", "error": str(exc)}, sort_keys=True))

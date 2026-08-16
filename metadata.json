@@ -8,7 +8,12 @@
   "description": "Private bonded first-contact messaging agent runtime",
   "author": "buidlLabs3",
   "main": "bonded_inbox_plugin",
-  "dependencies": ["delivery_module", "storage_module"],
+  "dependencies": ["delivery_module", "storage_module", "lez_core"],
+  "dependency_overrides": {
+    "lez_core": {
+      "file": "interfaces/lez_core.lidl"
+    }
+  },
   "capabilities": [],
   "nix": {
     "packages": {

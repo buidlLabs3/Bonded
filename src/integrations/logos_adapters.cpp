@@ -6,6 +6,9 @@
 #include <array>
 #include <cctype>
 #include <exception>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 #include <string_view>
 
 namespace bonded {
@@ -128,6 +131,68 @@ std::string decodeBase64(const std::string& encoded)
         }
     }
     return output;
+}
+
+std::string amountLe16(std::uint64_t amount)
+{
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string encoded(32, '0');
+    for (std::size_t index = 0; index < sizeof(amount); ++index) {
+        const auto byte = static_cast<unsigned>((amount >> (index * 8U)) & 0xffU);
+        encoded[index * 2] = hex[byte >> 4U];
+        encoded[index * 2 + 1] = hex[byte & 0x0fU];
+    }
+    return encoded;
+}
+
+bool isAccountId(const std::string& value)
+{
+    return value.size() == 64 &&
+           std::all_of(value.begin(), value.end(), [](const auto byte) {
+               return std::isxdigit(static_cast<unsigned char>(byte)) != 0;
+           });
+}
+
+std::string transactionHash(const std::string& response, const char* operation)
+{
+    try {
+        const auto result = Json::parse(response);
+        if (!result.is_object() || !result.value("success", false)) {
+            const auto error = result.is_object() ? result.value("error", "unknown error")
+                                                  : "invalid response";
+            throw DomainError(std::string(operation) + " failed: " + error);
+        }
+        const auto hash = result.value("tx_hash", "");
+        if (hash.empty()) {
+            throw DomainError(std::string(operation) + " returned an empty transaction hash");
+        }
+        return hash;
+    } catch (const DomainError&) {
+        throw;
+    } catch (const std::exception&) {
+        throw DomainError(std::string(operation) + " returned invalid JSON");
+    }
+}
+
+std::vector<std::uint8_t> readProgram(const std::string& binary_path)
+{
+    static constexpr std::uintmax_t maximum_program_bytes = 32U * 1024U * 1024U;
+    const std::filesystem::path path(binary_path);
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    if (error || size == 0 || size > maximum_program_bytes) {
+        throw DomainError("LEZ program must be a non-empty regular file of at most 32 MiB");
+    }
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw DomainError("could not open LEZ program binary");
+    }
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!input || input.peek() != std::ifstream::traits_type::eof()) {
+        throw DomainError("could not read complete LEZ program binary");
+    }
+    return bytes;
 }
 
 } // namespace
@@ -498,6 +563,111 @@ void LogosStorageAdapter::downloadDone(const std::string& event_json)
     pending.success = success;
     pending.error = error;
     changed_.notify_all();
+}
+
+LezWalletAdapter::LezWalletAdapter(std::string account_id, bool is_public, Balance balance,
+                                   Transfer transfer, LoadHistory load_history,
+                                   RecordTransfer record_transfer)
+    : account_id_(std::move(account_id)), is_public_(is_public), balance_(std::move(balance)),
+      transfer_(std::move(transfer)), load_history_(std::move(load_history)),
+      record_transfer_(std::move(record_transfer))
+{
+    if (!isAccountId(account_id_) || !balance_ || !transfer_ || !load_history_ ||
+        !record_transfer_) {
+        throw DomainError("LEZ wallet account and callbacks are required");
+    }
+}
+
+std::uint64_t LezWalletAdapter::balance() const
+{
+    const auto value = balance_(account_id_, is_public_);
+    if (value.empty() ||
+        !std::all_of(value.begin(), value.end(), [](const auto byte) { return std::isdigit(byte); })) {
+        throw DomainError("LEZ Core returned an invalid balance");
+    }
+    try {
+        std::size_t consumed = 0;
+        const auto parsed = std::stoull(value, &consumed, 10);
+        if (consumed != value.size()) {
+            throw DomainError("LEZ Core returned an invalid balance");
+        }
+        return parsed;
+    } catch (const DomainError&) {
+        throw;
+    } catch (const std::exception&) {
+        throw DomainError("LEZ balance exceeds Bonded Inbox's uint64 limit");
+    }
+}
+
+std::string LezWalletAdapter::send(const std::string& recipient, std::uint64_t amount,
+                                   std::uint64_t now_unix)
+{
+    if (!isAccountId(recipient) || amount == 0) {
+        throw DomainError("LEZ transfer recipient and positive amount are required");
+    }
+    const auto hash = transactionHash(
+        transfer_(account_id_, recipient, amountLe16(amount)), "LEZ transfer");
+    record_transfer_(WalletTransfer{hash, recipient, amount, now_unix});
+    return hash;
+}
+
+std::vector<WalletTransfer> LezWalletAdapter::history() const
+{
+    return load_history_();
+}
+
+LezProgramAdapter::LezProgramAdapter(Query query_public, Query query_private, Call call_public,
+                                     Call call_private, Deploy deploy)
+    : query_public_(std::move(query_public)), query_private_(std::move(query_private)),
+      call_public_(std::move(call_public)), call_private_(std::move(call_private)),
+      deploy_(std::move(deploy))
+{
+    if (!query_public_ || !query_private_ || !call_public_ || !call_private_ || !deploy_) {
+        throw DomainError("LEZ program callbacks are required");
+    }
+}
+
+Json LezProgramAdapter::query(const std::string& program_id, const Json& parameters) const
+{
+    if (program_id.empty() || !parameters.is_object()) {
+        throw DomainError("LEZ program query is invalid");
+    }
+    const auto privacy = parameters.value("privacy", "private");
+    const auto response = privacy == "public"    ? query_public_(program_id)
+                          : privacy == "private" ? query_private_(program_id)
+                                                 : throw DomainError(
+                                                       "LEZ query privacy must be public or private");
+    try {
+        const auto result = Json::parse(response);
+        if (!result.is_object()) {
+            throw DomainError("LEZ account query returned a non-object result");
+        }
+        return result;
+    } catch (const DomainError&) {
+        throw;
+    } catch (const std::exception&) {
+        throw DomainError("LEZ account query returned invalid JSON");
+    }
+}
+
+std::string LezProgramAdapter::call(const std::string& program_id,
+                                    const std::string& instruction, const Json& parameters)
+{
+    if (program_id.empty() || !parameters.is_object()) {
+        throw DomainError("LEZ program call is invalid");
+    }
+    if (instruction == "public") {
+        return transactionHash(call_public_(program_id, parameters), "LEZ public program call");
+    }
+    if (instruction == "private") {
+        return transactionHash(call_private_(program_id, parameters), "LEZ private program call");
+    }
+    throw DomainError("LEZ program instruction must be public or private");
+}
+
+std::string LezProgramAdapter::deploy(const std::string& binary_path)
+{
+    return transactionHash(deploy_(readProgram(binary_path)), "LEZ program deployment");
 }
 
 } // namespace bonded

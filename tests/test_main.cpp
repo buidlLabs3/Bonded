@@ -166,6 +166,12 @@ void testDatabase()
     check(database.pendingOutbox(10).empty(), "outbox acknowledgement failed");
     database.recordProcessedEvent("event-1");
     check(database.hasProcessedEvent("event-1"), "processed-event record missing");
+    database.recordWalletTransfer({"tx-1", "recipient", 25, 1000});
+    database.recordWalletTransfer({"tx-1", "recipient", 25, 1000});
+    const auto wallet_history = database.walletHistory();
+    check(wallet_history.size() == 1 && wallet_history.front().id == "tx-1" &&
+              wallet_history.front().amount == 25,
+          "wallet transfer history was not durably deduplicated");
 
     BondRecord bond{
         "bond:m1", "m1", "sender", "owner", "sink", "policy", 50, 2000, std::nullopt};

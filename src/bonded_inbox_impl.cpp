@@ -7,11 +7,15 @@
 #include "storage/database.h"
 #include "security/crypto.h"
 #include "logos_sdk.h"
+#include "logos_codec.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cerrno>
+#include <cctype>
 #include <filesystem>
 #include <fcntl.h>
+#include <limits>
 #include <unistd.h>
 
 using bonded::Json;
@@ -104,21 +108,59 @@ public:
     }
 };
 
-class UnavailableProgramAdapter final : public bonded::ProgramAdapter {
-public:
-    bonded::Json query(const std::string&, const bonded::Json&) const override
-    {
-        throw bonded::DomainError("official LEZ program host API is unavailable");
+std::vector<std::string> accountIds(const Json& parameters)
+{
+    const auto accounts = parameters.at("account_ids").get<std::vector<std::string>>();
+    if (accounts.empty()) {
+        throw bonded::DomainError("LEZ program call requires account_ids");
     }
-    std::string call(const std::string&, const std::string&, const bonded::Json&) override
-    {
-        throw bonded::DomainError("official LEZ program host API is unavailable");
+    for (const auto& account : accounts) {
+        if (account.size() != 64 ||
+            !std::all_of(account.begin(), account.end(), [](const auto byte) {
+                return std::isxdigit(static_cast<unsigned char>(byte)) != 0;
+            })) {
+            throw bonded::DomainError("LEZ program call contains an invalid account id");
+        }
     }
-    std::string deploy(const std::string&) override
-    {
-        throw bonded::DomainError("official LEZ program host API is unavailable");
+    return accounts;
+}
+
+LogosList instructionWords(const Json& parameters)
+{
+    const auto& words = parameters.at("instruction_words");
+    if (!words.is_array() || words.empty()) {
+        throw bonded::DomainError("LEZ program call requires instruction_words");
     }
-};
+    for (const auto& word : words) {
+        if (!word.is_number_unsigned() || word.get<std::uint64_t>() > UINT32_MAX) {
+            throw bonded::DomainError("LEZ instruction word exceeds uint32");
+        }
+    }
+    return words;
+}
+
+std::vector<std::uint8_t> programBytes(const Json& value)
+{
+    static constexpr std::size_t maximum_program_bytes = 32U * 1024U * 1024U;
+    const auto bytes = value.get<std::vector<std::uint8_t>>();
+    if (bytes.empty() || bytes.size() > maximum_program_bytes) {
+        throw bonded::DomainError("LEZ program bytes must be between 1 byte and 32 MiB");
+    }
+    return bytes;
+}
+
+LogosList programDependencies(const Json& parameters)
+{
+    const auto& values = parameters.value("program_dependencies", Json::array());
+    if (!values.is_array() || values.size() > 32) {
+        throw bonded::DomainError("LEZ program_dependencies must contain at most 32 entries");
+    }
+    LogosList encoded = Json::array();
+    for (const auto& value : values) {
+        encoded.push_back(logos::bytesToJson(programBytes(value)));
+    }
+    return encoded;
+}
 
 } // namespace
 
@@ -233,12 +275,64 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
             std::chrono::seconds(120));
         auto* const messaging = messaging_adapter.get();
         auto* const storage = storage_adapter.get();
+        std::unique_ptr<bonded::WalletAdapter> wallet_adapter =
+            std::make_unique<UnavailableWalletAdapter>();
+        std::string wallet_adapter_name = "official-lez-wallet-not-configured";
+        if (profile == bonded::Profile::Settlement) {
+            const auto account_id = configuration.at("lez_account_id").get<std::string>();
+            const auto account_kind = configuration.value("lez_account_kind", "private-owned");
+            if (account_kind != "public" && account_kind != "private-owned") {
+                throw bonded::DomainError("lez_account_kind must be public or private-owned");
+            }
+            const auto is_public = account_kind == "public";
+            wallet_adapter = std::make_unique<bonded::LezWalletAdapter>(
+                account_id, is_public,
+                [this](const std::string& account, bool public_account) {
+                    return modules().lez_core.get_balance(account, public_account);
+                },
+                [this, is_public](const std::string& from, const std::string& to,
+                                  const std::string& amount) {
+                    return is_public ? modules().lez_core.transfer_public(from, to, amount)
+                                     : modules().lez_core.transfer_private_owned(from, to, amount);
+                },
+                [database = database.get()] { return database->walletHistory(); },
+                [database = database.get()](const bonded::WalletTransfer& transfer) {
+                    database->recordWalletTransfer(transfer);
+                });
+            wallet_adapter_name = "logos-lez-core-0.4.0";
+        }
+        auto program_adapter = std::make_unique<bonded::LezProgramAdapter>(
+            [this](const std::string& account) {
+                return modules().lez_core.get_account_public(account);
+            },
+            [this](const std::string& account) {
+                return modules().lez_core.get_account_private(account);
+            },
+            [this](const std::string& program_id, const Json& parameters) {
+                const auto accounts = accountIds(parameters);
+                const auto& signing = parameters.at("signing_requirements");
+                if (!signing.is_array() || signing.size() != accounts.size() ||
+                    !std::all_of(signing.begin(), signing.end(),
+                                 [](const auto& item) { return item.is_boolean(); })) {
+                    throw bonded::DomainError(
+                        "LEZ signing_requirements must match account_ids");
+                }
+                return modules().lez_core.send_generic_public_transaction(
+                    accounts, signing, instructionWords(parameters), program_id);
+            },
+            [this](const std::string&, const Json& parameters) {
+                return modules().lez_core.send_generic_private_transaction(
+                    accountIds(parameters), instructionWords(parameters),
+                    programBytes(parameters.at("program_elf")),
+                    programDependencies(parameters));
+            },
+            [this](const std::vector<std::uint8_t>& bytes) {
+                return modules().lez_core.send_program_deployment_transaction(bytes);
+            });
         bonded::RuntimeAdapters adapters{
             std::move(messaging_adapter), std::move(storage_adapter),
-            std::make_unique<UnavailableWalletAdapter>(),
-            std::make_unique<UnavailableProgramAdapter>(), "logos-delivery-module",
-            "logos-storage-module", "official-lez-wallet-host-api-unavailable",
-            "official-lez-program-host-api-unavailable"};
+            std::move(wallet_adapter), std::move(program_adapter), "logos-delivery-module",
+            "logos-storage-module", std::move(wallet_adapter_name), "logos-lez-core-0.4.0"};
         auto skill_runtime = std::make_unique<bonded::SkillRuntime>(
             *skills, profile, configuration, [this](const Json& proposal) {
                 ownerActionRequired(proposal.dump());

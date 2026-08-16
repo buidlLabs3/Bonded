@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-"""Headless deployment and operations CLI for Bonded Inbox."""
+"""Operate a Bonded Inbox module in an isolated Logos Core daemon."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
-import secrets
 import shutil
+import subprocess
 import sys
-import tarfile
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 
+CONFIG_FILE = "deployment.json"
 STATE_FILE = "state.json"
-CONFIG_FILE = "config.json"
-IDENTITY_FILE = "identity.json"
+MODULE_NAME = "bonded_inbox"
+DEPENDENCY_NAMES = ("delivery_module", "storage_module", "lez_core")
 
 
 class CliError(RuntimeError):
@@ -54,29 +55,15 @@ def read_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def data_dir(args: argparse.Namespace) -> Path:
+def root_dir(args: argparse.Namespace) -> Path:
     return Path(args.data_dir).expanduser().resolve()
 
 
-def public_state(state: dict[str, Any]) -> dict[str, Any]:
-    allowed = {
-        "profile",
-        "network",
-        "status",
-        "version",
-        "balance",
-        "created_at",
-        "updated_at",
-        "test_deployment",
-        "module_sha256",
-        "pending_approvals",
-    }
-    return {key: value for key, value in state.items() if key in allowed}
+def resolved_file(value: str) -> Path:
+    return Path(value).expanduser().resolve()
 
 
 def digest(path: Path) -> str:
-    import hashlib
-
     hasher = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
@@ -84,25 +71,338 @@ def digest(path: Path) -> str:
     return hasher.hexdigest()
 
 
+def executable(path: Path) -> bool:
+    return path.is_file() and os.access(path, os.X_OK)
+
+
+def hex32(value: str) -> bool:
+    return len(value) == 64 and all(
+        character in "0123456789abcdefABCDEF" for character in value
+    )
+
+
+def public_state(state: dict[str, Any]) -> dict[str, Any]:
+    keys = {
+        "profile", "network", "status", "version", "created_at", "updated_at",
+        "source_commit", "module_sha256", "agent_id", "core_pid", "test_deployment",
+    }
+    return {key: state[key] for key in keys if key in state}
+
+
+def run_process(command: list[str], timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command, text=True, capture_output=True, check=False, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise CliError(f"command timed out after {timeout:g}s: {command[0]}") from error
+
+
+def run_checked(command: list[str], operation: str, timeout: float = 60.0) -> str:
+    result = run_process(command, timeout)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+        raise CliError(f"{operation} failed: {detail}")
+    return result.stdout.strip()
+
+
+def parse_command_json(output: str, operation: str) -> Any:
+    try:
+        value = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise CliError(f"{operation} returned invalid JSON") from error
+    if isinstance(value, dict) and value.get("status") == "error":
+        raise CliError(f"{operation} failed: {value.get('message', 'unknown Logos Core error')}")
+    return value
+
+
+def core_command(configuration: dict[str, Any], root: Path, *arguments: str,
+                 timeout: float = 60.0) -> Any:
+    command = [configuration["core_binary"], "--config-dir", str(root / "core")]
+    command.extend(arguments)
+    command.append("--json")
+    operation = "Logos Core " + " ".join(arguments[:2])
+    return parse_command_json(run_checked(command, operation, timeout), operation)
+
+
+def call(configuration: dict[str, Any], root: Path, module: str, method: str,
+         *arguments: str, timeout: float = 90.0) -> Any:
+    response = core_command(
+        configuration, root, "call", module, method, *arguments, timeout=timeout,
+    )
+    if not isinstance(response, dict) or response.get("status") != "ok" or "result" not in response:
+        raise CliError(f"{module}.{method} returned an invalid Logos Core response")
+    return response["result"]
+
+
+def require_logos_result(value: Any, operation: str) -> Any:
+    if not isinstance(value, dict) or not isinstance(value.get("success"), bool):
+        raise CliError(f"{operation} returned an invalid LogosResult")
+    if not value["success"]:
+        raise CliError(f"{operation} failed: {value.get('error') or 'unknown module error'}")
+    return value.get("value")
+
+
+def nested_bonded_response(value: Any, operation: str) -> dict[str, Any]:
+    if not isinstance(value, str):
+        raise CliError(f"{operation} returned a non-string response")
+    try:
+        response = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise CliError(f"{operation} returned invalid JSON") from error
+    if not isinstance(response, dict) or not isinstance(response.get("ok"), bool):
+        raise CliError(f"{operation} returned an invalid Bonded response")
+    if not response["ok"]:
+        error = response.get("error", {})
+        message = error.get("message", "unknown Bonded error") if isinstance(error, dict) else error
+        raise CliError(f"{operation} failed: {message}")
+    result = response.get("result", {})
+    if not isinstance(result, dict):
+        raise CliError(f"{operation} returned an invalid result")
+    return result
+
+
 def deployment_plan(args: argparse.Namespace) -> dict[str, Any]:
-    module = Path(args.module).expanduser().resolve()
-    core = Path(args.core_binary).expanduser().resolve()
+    root = root_dir(args)
+    module = resolved_file(args.module)
+    dependencies = [resolved_file(item) for item in args.dependency_module]
+    core = resolved_file(args.core_binary)
+    package_manager = resolved_file(args.package_manager)
     checks = {
         "module_exists": module.is_file(),
-        "core_binary_exists": core.is_file(),
-        "profile_valid": args.profile in {"inbox", "vault", "settlement"},
-        "owner_key_present": bool(args.owner_public_key),
+        "three_dependency_modules_present": len(dependencies) == len(DEPENDENCY_NAMES)
+        and len(set(dependencies)) == len(DEPENDENCY_NAMES)
+        and all(item.is_file() for item in dependencies),
+        "core_binary_executable": executable(core),
+        "package_manager_executable": executable(package_manager),
+        "owner_key_valid": hex32(args.owner_public_key),
+        "source_commit_valid": len(args.source_commit) == 40
+        and all(character in "0123456789abcdefABCDEF" for character in args.source_commit),
+        "network_is_lez_testnet": args.network == "lez-testnet",
+        "destination_not_broad": root != Path("/") and root != Path.home(),
+        "limits_positive": args.per_transaction_limit > 0 and args.per_period_limit > 0
+        and args.approval_timeout_seconds > 0 and args.start_timeout > 0,
     }
+    if args.profile == "settlement":
+        checks["lez_wallet_files_present"] = all(
+            resolved_file(value).is_file()
+            for value in (args.lez_config, args.lez_storage, args.lez_statistics)
+        )
+        checks["lez_account_id_valid"] = hex32(args.lez_account_id)
     return {
         "action": "deploy",
-        "data_directory": str(data_dir(args)),
+        "data_directory": str(root),
         "profile": args.profile,
         "network": args.network,
         "module": str(module),
+        "dependency_modules": [str(item) for item in dependencies],
         "core_binary": str(core),
+        "package_manager": str(package_manager),
         "checks": checks,
         "ready": all(checks.values()),
     }
+
+
+def desired_configuration(args: argparse.Namespace, plan: dict[str, Any]) -> dict[str, Any]:
+    configuration = {
+        "profile": args.profile,
+        "network": args.network,
+        "owner_public_key": args.owner_public_key,
+        "source_commit": args.source_commit.lower(),
+        "module": plan["module"],
+        "dependency_modules": plan["dependency_modules"],
+        "core_binary": plan["core_binary"],
+        "package_manager": plan["package_manager"],
+        "per_transaction_limit": args.per_transaction_limit,
+        "per_period_limit": args.per_period_limit,
+        "approval_timeout_seconds": args.approval_timeout_seconds,
+        "test_deployment": args.test_deployment,
+        "start_timeout": args.start_timeout,
+        "delivery_configuration": {"mode": "Edge", "preset": "logos.test"},
+        "storage_configuration": {
+            "data-dir": str(root_dir(args) / "agent-data" / "storage"),
+            "log-level": "INFO",
+            "listen-port": 0,
+            "disc-port": 0,
+            "nat": "auto",
+            "network": "logos.test",
+            "storage-quota": 1073741824,
+            "mix-enabled": False,
+        },
+    }
+    if args.profile == "settlement":
+        configuration.update({
+            "lez_config": str(resolved_file(args.lez_config)),
+            "lez_storage": str(resolved_file(args.lez_storage)),
+            "lez_statistics": str(resolved_file(args.lez_statistics)),
+            "lez_account_id": args.lez_account_id.lower(),
+            "lez_account_kind": args.lez_account_kind,
+        })
+    return configuration
+
+
+def install_modules(configuration: dict[str, Any], root: Path) -> None:
+    modules_directory = root / "modules"
+    modules_directory.mkdir(parents=True, exist_ok=True)
+    for package in [*configuration["dependency_modules"], configuration["module"]]:
+        run_checked([
+            configuration["package_manager"], "--modules-dir", str(modules_directory),
+            "--allow-unsigned", "install", "--file", package,
+        ], f"installing {Path(package).name}", timeout=180.0)
+
+
+def write_runtime_files(configuration: dict[str, Any], root: Path) -> None:
+    runtime_directory = root / "runtime-config"
+    runtime_directory.mkdir(parents=True, exist_ok=True)
+    runtime_configuration = {
+        "profile": configuration["profile"],
+        "network": configuration["network"],
+        "owner_public_key": configuration["owner_public_key"],
+        "data_directory": str(root / "agent-data" / "bonded"),
+        "per_transaction_limit": configuration["per_transaction_limit"],
+        "per_period_limit": configuration["per_period_limit"],
+        "approval_timeout_seconds": configuration["approval_timeout_seconds"],
+    }
+    if configuration["profile"] == "settlement":
+        runtime_configuration.update({
+            "lez_account_id": configuration["lez_account_id"],
+            "lez_account_kind": configuration["lez_account_kind"],
+        })
+    atomic_json(runtime_directory / "delivery.json", configuration["delivery_configuration"])
+    atomic_json(runtime_directory / "storage.json", configuration["storage_configuration"])
+    atomic_json(runtime_directory / "bonded.json", runtime_configuration)
+
+
+def wait_for_core(configuration: dict[str, Any], root: Path, process: subprocess.Popen[Any]) -> Any:
+    deadline = time.monotonic() + float(configuration["start_timeout"])
+    last_error = "daemon did not publish status"
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise CliError(f"Logos Core daemon exited during startup with code {process.returncode}")
+        result = run_process([
+            configuration["core_binary"], "--config-dir", str(root / "core"),
+            "status", "--json",
+        ], timeout=5.0)
+        if result.returncode == 0:
+            try:
+                status = parse_command_json(result.stdout.strip(), "Logos Core status")
+                if isinstance(status, dict) and status.get("daemon", {}).get("status") == "running":
+                    return status
+            except CliError as error:
+                last_error = str(error)
+        else:
+            last_error = result.stderr.strip() or result.stdout.strip() or last_error
+        time.sleep(0.2)
+    raise CliError(f"Logos Core daemon was not ready: {last_error}")
+
+
+def initialize_modules(configuration: dict[str, Any], root: Path) -> dict[str, Any]:
+    core_command(configuration, root, "load-module", MODULE_NAME, timeout=180.0)
+    runtime_directory = root / "runtime-config"
+    require_logos_result(call(
+        configuration, root, "delivery_module", "createNode",
+        "@" + str(runtime_directory / "delivery.json"), timeout=120.0,
+    ), "delivery_module.createNode")
+    require_logos_result(call(
+        configuration, root, "delivery_module", "start", timeout=120.0,
+    ), "delivery_module.start")
+    if call(
+        configuration, root, "storage_module", "init",
+        "@" + str(runtime_directory / "storage.json"), timeout=120.0,
+    ) is not True:
+        raise CliError("storage_module.init did not return true")
+    if call(configuration, root, "storage_module", "start", timeout=120.0) is not True:
+        raise CliError("storage_module.start did not return true")
+    if configuration["profile"] == "settlement":
+        result = call(
+            configuration, root, "lez_core", "open", configuration["lez_config"],
+            configuration["lez_storage"], configuration["lez_statistics"], timeout=120.0,
+        )
+        if result != 0:
+            raise CliError(f"lez_core.open failed with wallet error {result}")
+    nested_bonded_response(call(
+        configuration, root, MODULE_NAME, "initialize",
+        "@" + str(runtime_directory / "bonded.json"), timeout=120.0,
+    ), "bonded_inbox.initialize")
+    return nested_bonded_response(
+        call(configuration, root, MODULE_NAME, "getStatus"), "bonded_inbox.getStatus",
+    )
+
+
+def core_is_running(configuration: dict[str, Any], root: Path) -> bool:
+    result = run_process([
+        configuration["core_binary"], "--config-dir", str(root / "core"),
+        "status", "--json",
+    ], timeout=5.0)
+    if result.returncode != 0:
+        return False
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(value, dict) and value.get("daemon", {}).get("status") == "running"
+
+
+def write_public_evidence(configuration: dict[str, Any], root: Path,
+                          state: dict[str, Any], module_status: dict[str, Any]) -> None:
+    artifacts = {
+        "bonded_inbox": {
+            "file": Path(configuration["module"]).name,
+            "sha256": state["module_sha256"],
+        },
+    }
+    for name, package in zip(DEPENDENCY_NAMES, configuration["dependency_modules"], strict=True):
+        artifacts[name] = {"file": Path(package).name, "sha256": digest(Path(package))}
+    evidence = {
+        "schema_version": 1,
+        "source_commit": configuration["source_commit"],
+        "artifacts": artifacts,
+        "profile": configuration["profile"],
+        "network": configuration["network"],
+        "agent_id": state.get("agent_id", ""),
+        "observed_at_unix": int(time.time()),
+        "health": module_status,
+    }
+    atomic_json(root / "evidence" / "deployment.json", evidence, mode=0o644)
+
+
+def start_deployment(configuration: dict[str, Any], root: Path) -> dict[str, Any]:
+    state = read_json(root / STATE_FILE)
+    if core_is_running(configuration, root):
+        return {"changed": False, "deployment": public_state(state)}
+    (root / "logs").mkdir(parents=True, exist_ok=True)
+    (root / "persistence").mkdir(parents=True, exist_ok=True)
+    log_handle = (root / "logs" / "logoscore.log").open("ab", buffering=0)
+    try:
+        process = subprocess.Popen(
+            [configuration["core_binary"], "--config-dir", str(root / "core"), "-D",
+             "-m", str(root / "modules"), "--persistence-path", str(root / "persistence")],
+            stdin=subprocess.DEVNULL, stdout=log_handle, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        log_handle.close()
+    try:
+        wait_for_core(configuration, root, process)
+        module_status = initialize_modules(configuration, root)
+    except Exception:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        raise
+    runtime = module_status.get("runtime", {})
+    state.update({
+        "status": "running",
+        "updated_at": int(time.time()),
+        "core_pid": process.pid,
+        "agent_id": runtime.get("agent_id", "") if isinstance(runtime, dict) else "",
+    })
+    atomic_json(root / STATE_FILE, state)
+    write_public_evidence(configuration, root, state, module_status)
+    return {"changed": True, "deployment": public_state(state), "module": module_status}
 
 
 def command_plan(args: argparse.Namespace) -> dict[str, Any]:
@@ -114,211 +414,143 @@ def command_deploy(args: argparse.Namespace) -> dict[str, Any]:
     if not plan["ready"]:
         failed = [name for name, passed in plan["checks"].items() if not passed]
         raise CliError("deployment preflight failed: " + ", ".join(failed))
-
-    root = data_dir(args)
-    desired = {
-        "profile": args.profile,
-        "network": args.network,
-        "owner_public_key": args.owner_public_key,
-        "per_transaction_limit": args.per_transaction_limit,
-        "per_period_limit": args.per_period_limit,
-        "approval_timeout_seconds": args.approval_timeout_seconds,
-        "module": plan["module"],
-        "core_binary": plan["core_binary"],
-    }
-    if (root.joinpath(CONFIG_FILE).exists()):
-        current = read_json(root / CONFIG_FILE)
-        if current != desired:
-            raise CliError("deployment exists with different configuration; use upgrade")
-        return {"changed": False, "deployment": public_state(read_json(root / STATE_FILE))}
-
+    root = root_dir(args)
+    configuration = desired_configuration(args, plan)
+    if (root / CONFIG_FILE).exists():
+        if read_json(root / CONFIG_FILE) != configuration:
+            raise CliError("deployment exists with different configuration")
+        return start_deployment(configuration, root)
     root.mkdir(parents=True, exist_ok=True)
     os.chmod(root, 0o700)
-    identity = {
-        "npk": "npk:" + secrets.token_hex(32),
-        "isk": secrets.token_hex(32),
-    }
+    install_modules(configuration, root)
+    write_runtime_files(configuration, root)
     now = int(time.time())
     state = {
-        "profile": args.profile,
-        "network": args.network,
-        "status": "configured",
+        "profile": configuration["profile"],
+        "network": configuration["network"],
+        "status": "stopped",
         "version": "0.1.0",
-        "balance": 0,
         "created_at": now,
         "updated_at": now,
-        "test_deployment": args.test_deployment,
-        "module_sha256": digest(Path(plan["module"])),
-        "pending_approvals": {},
-        "version_history": [],
+        "source_commit": configuration["source_commit"],
+        "module_sha256": digest(Path(configuration["module"])),
+        "test_deployment": configuration["test_deployment"],
     }
-    atomic_json(root / CONFIG_FILE, desired)
-    atomic_json(root / IDENTITY_FILE, identity)
+    atomic_json(root / CONFIG_FILE, configuration)
     atomic_json(root / STATE_FILE, state)
-    service = {
-        "exec": [plan["core_binary"], "--headless", "--module", plan["module"]],
-        "environment": {"BONDED_CONFIG": str(root / CONFIG_FILE)},
-        "restart": "on-failure",
-    }
-    atomic_json(root / "service.json", service)
-    atomic_json(root / "audit.json", {"events": []})
+    return start_deployment(configuration, root)
+
+
+def command_start(args: argparse.Namespace) -> dict[str, Any]:
+    root = root_dir(args)
+    return start_deployment(read_json(root / CONFIG_FILE), root)
+
+
+def command_stop(args: argparse.Namespace) -> dict[str, Any]:
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    state = read_json(root / STATE_FILE)
+    if not core_is_running(configuration, root):
+        state.update({"status": "stopped", "updated_at": int(time.time())})
+        state.pop("core_pid", None)
+        atomic_json(root / STATE_FILE, state)
+        return {"changed": False, "deployment": public_state(state)}
+    core_command(configuration, root, "stop", timeout=30.0)
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline and core_is_running(configuration, root):
+        time.sleep(0.2)
+    if core_is_running(configuration, root):
+        raise CliError("Logos Core did not stop within 15 seconds")
+    state.update({"status": "stopped", "updated_at": int(time.time())})
+    state.pop("core_pid", None)
+    atomic_json(root / STATE_FILE, state)
     return {"changed": True, "deployment": public_state(state)}
 
 
+def live_module_status(configuration: dict[str, Any], root: Path) -> dict[str, Any]:
+    return nested_bonded_response(
+        call(configuration, root, MODULE_NAME, "getStatus"), "bonded_inbox.getStatus",
+    )
+
+
 def command_status(args: argparse.Namespace) -> dict[str, Any]:
-    return public_state(read_json(data_dir(args) / STATE_FILE))
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    state = read_json(root / STATE_FILE)
+    running = core_is_running(configuration, root)
+    state["status"] = "running" if running else "stopped"
+    result: dict[str, Any] = {"deployment": public_state(state), "core_running": running}
+    if running:
+        result["module"] = live_module_status(configuration, root)
+    return result
 
 
 def command_health(args: argparse.Namespace) -> dict[str, Any]:
-    root = data_dir(args)
-    state = read_json(root / STATE_FILE)
-    required = [STATE_FILE, CONFIG_FILE, IDENTITY_FILE, "service.json"]
-    missing = [name for name in required if not root.joinpath(name).is_file()]
-    return {
-        "ready": not missing and state.get("status") in {"configured", "running", "stopped"},
-        "missing": missing,
-        "status": state.get("status", "unknown"),
-    }
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    if not core_is_running(configuration, root):
+        return {"ready": False, "core_running": False, "reason": "Logos Core is stopped"}
+    try:
+        module = live_module_status(configuration, root)
+    except CliError as error:
+        return {"ready": False, "core_running": True, "reason": str(error)}
+    runtime = module.get("runtime", {})
+    ready = module.get("state") == "ready" and isinstance(runtime, dict) \
+        and runtime.get("state") == "ready"
+    return {"ready": ready, "core_running": True, "module": module}
+
+
+def command_invoke(args: argparse.Namespace) -> dict[str, Any]:
+    root = root_dir(args)
+    configuration = read_json(root / CONFIG_FILE)
+    if not core_is_running(configuration, root):
+        raise CliError("Logos Core is stopped")
+    request = {"skill": args.skill, "input": read_json(resolved_file(args.input))}
+    request_path = root / "runtime-config" / "invoke.json"
+    atomic_json(request_path, request)
+    return nested_bonded_response(call(
+        configuration, root, MODULE_NAME, "invokeSkill", "@" + str(request_path),
+    ), f"skill {args.skill}")
 
 
 def command_logs(args: argparse.Namespace) -> dict[str, Any]:
-    audit = read_json(data_dir(args) / "audit.json")
-    events = audit.get("events", [])
-    if not isinstance(events, list):
-        raise CliError("audit event store is invalid")
-    return {"events": events[-args.limit :]}
-
-
-def command_policy(args: argparse.Namespace) -> dict[str, Any]:
-    source = Path(args.file).expanduser().resolve()
-    policy = read_json(source)
-    required = {"inbox_id", "owner_address", "sink_address", "version", "signature"}
-    if not required.issubset(policy):
-        raise CliError("policy is missing required signed fields")
-    if policy["owner_address"] == policy["sink_address"]:
-        raise CliError("policy sink must not be the owner")
-    destination = data_dir(args) / "policy.json"
-    atomic_json(destination, policy)
-    return {"updated": True, "inbox_id": policy["inbox_id"], "version": policy["version"]}
-
-
-def command_fund(args: argparse.Namespace) -> dict[str, Any]:
-    if args.amount <= 0:
-        raise CliError("fund amount must be positive")
-    path = data_dir(args) / STATE_FILE
-    state = read_json(path)
-    state["balance"] = int(state.get("balance", 0)) + args.amount
-    state["updated_at"] = int(time.time())
-    atomic_json(path, state)
-    return {"balance": state["balance"], "recorded": True, "network_submit": False}
-
-
-def command_decision(args: argparse.Namespace) -> dict[str, Any]:
-    path = data_dir(args) / STATE_FILE
-    state = read_json(path)
-    approvals = state.setdefault("pending_approvals", {})
-    current = approvals.get(args.proposal_id)
-    if current in {"approved", "denied"} and current != args.decision:
-        raise CliError("approval already has a conflicting terminal decision")
-    approvals[args.proposal_id] = args.decision
-    state["updated_at"] = int(time.time())
-    atomic_json(path, state)
-    return {"proposal_id": args.proposal_id, "decision": args.decision}
-
-
-def command_backup(args: argparse.Namespace) -> dict[str, Any]:
-    root = data_dir(args)
-    read_json(root / STATE_FILE)
-    destination = Path(args.output).expanduser().resolve()
-    if destination.exists():
-        raise CliError("backup output already exists")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(destination, "x:gz") as archive:
-        for path in sorted(root.rglob("*")):
-            if path.is_file():
-                archive.add(path, arcname=path.relative_to(root), recursive=False)
-    return {"backup": str(destination), "sha256": digest(destination)}
-
-
-def safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
-    members = archive.getmembers()
-    for member in members:
-        path = Path(member.name)
-        if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk():
-            raise CliError("backup contains an unsafe path")
-    return members
-
-
-def command_restore(args: argparse.Namespace) -> dict[str, Any]:
-    root = data_dir(args)
-    source = Path(args.input).expanduser().resolve()
-    if root.exists() and any(root.iterdir()):
-        raise CliError("restore destination must be empty")
-    root.mkdir(parents=True, exist_ok=True)
-    os.chmod(root, 0o700)
-    with tarfile.open(source, "r:gz") as archive:
-        archive.extractall(root, members=safe_members(archive), filter="data")
-    state = read_json(root / STATE_FILE)
-    return {"restored": True, "deployment": public_state(state)}
-
-
-def command_upgrade(args: argparse.Namespace) -> dict[str, Any]:
-    module = Path(args.module).expanduser().resolve()
-    if not module.is_file():
-        raise CliError("upgrade module does not exist")
-    root = data_dir(args)
-    state_path = root / STATE_FILE
-    state = read_json(state_path)
-    configuration = read_json(root / CONFIG_FILE)
-    state.setdefault("version_history", []).append(
-        {"version": state["version"], "module": configuration["module"],
-         "module_sha256": state["module_sha256"]}
-    )
-    configuration["module"] = str(module)
-    state["version"] = args.version
-    state["module_sha256"] = digest(module)
-    state["updated_at"] = int(time.time())
-    atomic_json(root / CONFIG_FILE, configuration)
-    atomic_json(state_path, state)
-    return {"upgraded": True, "version": args.version, "module_sha256": state["module_sha256"]}
-
-
-def command_rollback(args: argparse.Namespace) -> dict[str, Any]:
-    root = data_dir(args)
-    state_path = root / STATE_FILE
-    state = read_json(state_path)
-    history = state.get("version_history", [])
-    if not history:
-        raise CliError("no rollback version is available")
-    previous = history.pop()
-    configuration = read_json(root / CONFIG_FILE)
-    configuration["module"] = previous["module"]
-    state["version"] = previous["version"]
-    state["module_sha256"] = previous["module_sha256"]
-    state["updated_at"] = int(time.time())
-    atomic_json(root / CONFIG_FILE, configuration)
-    atomic_json(state_path, state)
-    return {"rolled_back": True, "version": state["version"]}
+    path = root_dir(args) / "logs" / "logoscore.log"
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except FileNotFoundError as error:
+        raise CliError("Logos Core log does not exist") from error
+    return {"path": str(path), "lines": lines[-args.limit:]}
 
 
 def command_teardown(args: argparse.Namespace) -> dict[str, Any]:
-    root = data_dir(args)
+    root = root_dir(args)
     state = read_json(root / STATE_FILE)
     if not state.get("test_deployment") or args.confirm != "DELETE-TEST-DEPLOYMENT":
         raise CliError("teardown is restricted to marked test deployments with exact confirmation")
+    command_stop(args)
     shutil.rmtree(root)
-    return {"removed": str(root), "backup_required_for_recovery": True}
+    return {"removed": str(root), "recoverable": False}
 
 
 def add_deploy_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", required=True, choices=["inbox", "vault", "settlement"])
-    parser.add_argument("--network", required=True)
+    parser.add_argument("--network", required=True, choices=["lez-testnet"])
     parser.add_argument("--owner-public-key", required=True)
+    parser.add_argument("--source-commit", required=True)
     parser.add_argument("--module", required=True)
+    parser.add_argument("--dependency-module", action="append", default=[], required=True)
     parser.add_argument("--core-binary", required=True)
+    parser.add_argument("--package-manager", required=True)
     parser.add_argument("--per-transaction-limit", type=int, default=100)
     parser.add_argument("--per-period-limit", type=int, default=500)
     parser.add_argument("--approval-timeout-seconds", type=int, default=3600)
+    parser.add_argument("--start-timeout", type=float, default=60.0)
+    parser.add_argument("--lez-config", default="")
+    parser.add_argument("--lez-storage", default="")
+    parser.add_argument("--lez-statistics", default="")
+    parser.add_argument("--lez-account-id", default="")
+    parser.add_argument("--lez-account-kind", choices=["public", "private-owned"],
+                        default="private-owned")
     parser.add_argument("--test-deployment", action="store_true")
 
 
@@ -326,40 +558,21 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="bonded-inbox")
     root.add_argument("--data-dir", required=True)
     subparsers = root.add_subparsers(dest="command", required=True)
-
-    plan = subparsers.add_parser("plan")
-    add_deploy_arguments(plan)
-    plan.set_defaults(function=command_plan)
-    deploy = subparsers.add_parser("deploy")
-    add_deploy_arguments(deploy)
-    deploy.set_defaults(function=command_deploy)
+    for name, function in (("plan", command_plan), ("deploy", command_deploy)):
+        item = subparsers.add_parser(name)
+        add_deploy_arguments(item)
+        item.set_defaults(function=function)
+    subparsers.add_parser("start").set_defaults(function=command_start)
+    subparsers.add_parser("stop").set_defaults(function=command_stop)
     subparsers.add_parser("status").set_defaults(function=command_status)
     subparsers.add_parser("health").set_defaults(function=command_health)
     logs = subparsers.add_parser("logs")
     logs.add_argument("--limit", type=int, default=100)
     logs.set_defaults(function=command_logs)
-    policy = subparsers.add_parser("policy")
-    policy.add_argument("--file", required=True)
-    policy.set_defaults(function=command_policy)
-    fund = subparsers.add_parser("fund")
-    fund.add_argument("--amount", type=int, required=True)
-    fund.set_defaults(function=command_fund)
-    for decision in ("approve", "deny"):
-        item = subparsers.add_parser(decision)
-        item.add_argument("proposal_id")
-        terminal_decision = "approved" if decision == "approve" else "denied"
-        item.set_defaults(function=command_decision, decision=terminal_decision)
-    backup = subparsers.add_parser("backup")
-    backup.add_argument("--output", required=True)
-    backup.set_defaults(function=command_backup)
-    restore = subparsers.add_parser("restore")
-    restore.add_argument("--input", required=True)
-    restore.set_defaults(function=command_restore)
-    upgrade = subparsers.add_parser("upgrade")
-    upgrade.add_argument("--module", required=True)
-    upgrade.add_argument("--version", required=True)
-    upgrade.set_defaults(function=command_upgrade)
-    subparsers.add_parser("rollback").set_defaults(function=command_rollback)
+    invoke = subparsers.add_parser("invoke")
+    invoke.add_argument("--skill", required=True)
+    invoke.add_argument("--input", required=True)
+    invoke.set_defaults(function=command_invoke)
     teardown = subparsers.add_parser("teardown")
     teardown.add_argument("--confirm", required=True)
     teardown.set_defaults(function=command_teardown)
@@ -372,9 +585,11 @@ def main() -> int:
         output = args.function(args)
         print(json.dumps({"ok": True, "result": output}, sort_keys=True))
         return 0
-    except (CliError, OSError, KeyError, ValueError, tarfile.TarError) as error:
-        print(json.dumps({"ok": False, "error": {"code": "operation_failed", "message": str(error)}}),
-              file=sys.stderr)
+    except (CliError, OSError, KeyError, ValueError) as error:
+        print(json.dumps({
+            "ok": False,
+            "error": {"code": "operation_failed", "message": str(error)},
+        }, sort_keys=True), file=sys.stderr)
         return 2
 
 

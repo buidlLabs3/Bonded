@@ -19,26 +19,40 @@ interaction test, not a wallet or testnet client.
 
 ## Headless Deployment
 
-Use separate data directories and identities for `inbox`, `vault`, and
-`settlement`.
+Build the pinned official stack. The command runs sequentially and writes only
+Nix result links beneath the chosen output directory.
 
 ```bash
-bin/bonded-inbox --data-dir /var/lib/bonded-inbox plan \
-  --profile inbox --network lez-testnet \
-  --owner-public-key OWNER_PUBLIC_KEY \
-  --module ./result/logos-bonded_inbox-module-lib.lgx \
-  --core-binary /opt/logos/bin/logos-core
-
-bin/bonded-inbox --data-dir /var/lib/bonded-inbox deploy \
-  --profile inbox --network lez-testnet \
-  --owner-public-key OWNER_PUBLIC_KEY \
-  --module ./result/logos-bonded_inbox-module-lib.lgx \
-  --core-binary /opt/logos/bin/logos-core
+scripts/build-live-stack.sh build/live-stack
 ```
 
-The CLI also provides `status`, `health`, `logs`, `policy`, `fund`, `approve`,
-`deny`, `backup`, `restore`, `upgrade`, and `rollback`. Review `--help` before
-mutating a deployment.
+Deploy three isolated profiles. The wallet directory must remain outside the
+repository and contain `wallet_config.json`, `storage.json`, and
+`statistics.json`.
+
+```bash
+scripts/manage-live-agents.sh deploy \
+  --artifacts build/live-stack \
+  --data-root /absolute/private/path/to/agents \
+  --owner-public-key "$OWNER_PUBLIC_KEY" \
+  --wallet-home "$LEE_WALLET_HOME_DIR" \
+  --lez-account-id "$LEZ_ACCOUNT_ID" \
+  --lez-account-kind private-owned
+```
+
+Each profile receives its own runtime identity, SQLite database, Storage data,
+Core persistence, and log. Inspect or stop all three without deleting state:
+
+```bash
+scripts/manage-live-agents.sh health --data-root /absolute/private/path/to/agents
+scripts/manage-live-agents.sh status --data-root /absolute/private/path/to/agents
+scripts/manage-live-agents.sh stop --data-root /absolute/private/path/to/agents
+scripts/manage-live-agents.sh start --data-root /absolute/private/path/to/agents
+```
+
+For a single profile, `bin/bonded-inbox --help` exposes `plan`, `deploy`,
+`start`, `stop`, `status`, `health`, `logs`, `invoke`, and guarded test-only
+`teardown` commands.
 
 ## Official LEZ Testnet
 
@@ -130,6 +144,11 @@ approvals pending until timeout; it never authorizes a spend.
 |---|---|---:|---|---|
 | UI-01 | Runnable Basecamp owner interface | local | QML smoke and asset tests | verified-local |
 | CI-02 | Real proof with development mode disabled | standalone | five-case v2 artifact | verified-local |
-| LEZ-BASE | Program and wallet baseline evidence | testnet | deployment, registrations, funding | implemented |
-| LEZ-LIFECYCLE | Acceptance, rejection, expiry, delivery failure | testnet | eight required transactions | planned |
-| LEZ-VALUE | Spending control and paid task settlement | testnet | three required transactions | planned |
+| LEZ-BASE | Program and wallet baseline evidence | testnet | deployment, registrations, funding | verified-testnet |
+| LEZ-LIFECYCLE | Acceptance, rejection, expiry, delivery failure | testnet | eight required transactions | verified-testnet |
+| LEZ-VALUE | Spending control and paid task settlement | testnet | three required transactions | verified-testnet |
+
+These testnet rows prove only the 16 public operations indexed by
+`evidence/testnet/required-evidence.json`. They do not claim that three agents,
+the Basecamp backend, or the live A2A flow are deployed. The criterion-by-criterion
+status and explicit gaps are recorded in `release/submission-readiness.json`.

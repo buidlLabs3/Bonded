@@ -96,7 +96,10 @@ void Database::migrate()
                 "FOREIGN KEY(outbox_id) REFERENCES outbox(id))");
         execute("CREATE TABLE IF NOT EXISTS processed_events("
                 "event_id TEXT PRIMARY KEY, processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
-        execute("UPDATE schema_version SET version = 2 WHERE version < 2");
+        execute("CREATE TABLE IF NOT EXISTS wallet_transfers("
+                "id TEXT PRIMARY KEY, recipient TEXT NOT NULL, amount INTEGER NOT NULL, "
+                "timestamp_unix INTEGER NOT NULL)");
+        execute("UPDATE schema_version SET version = 3 WHERE version < 3");
         execute("COMMIT");
     } catch (...) {
         execute("ROLLBACK");
@@ -316,6 +319,38 @@ bool Database::hasProcessedEvent(const std::string& event_id) const
     Statement statement(db_, "SELECT 1 FROM processed_events WHERE event_id = ?");
     bindText(statement.get(), 1, event_id);
     return sqlite3_step(statement.get()) == SQLITE_ROW;
+}
+
+void Database::recordWalletTransfer(const WalletTransfer& transfer)
+{
+    if (transfer.id.empty() || transfer.recipient.empty() || transfer.amount == 0) {
+        throw DomainError("wallet transfer record is invalid");
+    }
+    Statement statement(
+        db_, "INSERT OR IGNORE INTO wallet_transfers(id, recipient, amount, timestamp_unix) "
+             "VALUES(?, ?, ?, ?)");
+    bindText(statement.get(), 1, transfer.id);
+    bindText(statement.get(), 2, transfer.recipient);
+    sqlite3_bind_int64(statement.get(), 3, static_cast<sqlite3_int64>(transfer.amount));
+    sqlite3_bind_int64(statement.get(), 4,
+                       static_cast<sqlite3_int64>(transfer.timestamp_unix));
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        throw DomainError(sqlite3_errmsg(db_));
+    }
+}
+
+std::vector<WalletTransfer> Database::walletHistory() const
+{
+    Statement statement(db_, "SELECT id, recipient, amount, timestamp_unix "
+                             "FROM wallet_transfers ORDER BY timestamp_unix, id");
+    std::vector<WalletTransfer> transfers;
+    while (sqlite3_step(statement.get()) == SQLITE_ROW) {
+        transfers.push_back(
+            {columnText(statement.get(), 0), columnText(statement.get(), 1),
+             static_cast<std::uint64_t>(sqlite3_column_int64(statement.get(), 2)),
+             static_cast<std::uint64_t>(sqlite3_column_int64(statement.get(), 3))});
+    }
+    return transfers;
 }
 
 } // namespace bonded

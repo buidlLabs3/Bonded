@@ -98,4 +98,52 @@ private:
     mutable std::size_t starting_downloads_{0};
 };
 
+class LezWalletAdapter : public WalletAdapter {
+public:
+    using Balance = std::function<std::string(const std::string&, bool)>;
+    using Transfer =
+        std::function<std::string(const std::string&, const std::string&, const std::string&)>;
+    using LoadHistory = std::function<std::vector<WalletTransfer>()>;
+    using RecordTransfer = std::function<void(const WalletTransfer&)>;
+
+    LezWalletAdapter(std::string account_id, bool is_public, Balance balance,
+                     Transfer transfer, LoadHistory load_history,
+                     RecordTransfer record_transfer);
+
+    std::uint64_t balance() const override;
+    std::string send(const std::string& recipient, std::uint64_t amount,
+                     std::uint64_t now_unix) override;
+    std::vector<WalletTransfer> history() const override;
+
+private:
+    std::string account_id_;
+    bool is_public_{false};
+    Balance balance_;
+    Transfer transfer_;
+    LoadHistory load_history_;
+    RecordTransfer record_transfer_;
+};
+
+class LezProgramAdapter : public ProgramAdapter {
+public:
+    using Query = std::function<std::string(const std::string&)>;
+    using Call = std::function<std::string(const std::string&, const Json&)>;
+    using Deploy = std::function<std::string(const std::vector<std::uint8_t>&)>;
+
+    LezProgramAdapter(Query query_public, Query query_private, Call call_public,
+                      Call call_private, Deploy deploy);
+
+    Json query(const std::string& program_id, const Json& parameters) const override;
+    std::string call(const std::string& program_id, const std::string& instruction,
+                     const Json& parameters) override;
+    std::string deploy(const std::string& binary_path) override;
+
+private:
+    Query query_public_;
+    Query query_private_;
+    Call call_public_;
+    Call call_private_;
+    Deploy deploy_;
+};
+
 } // namespace bonded

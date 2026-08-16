@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "specification": "https://github.com/logos-co/lambda-prize/blob/master/prizes/LP-0008.md",
+  "release_commit": "ab36ba029c9b8df69ee0c75bbb4f1c7e9dbf1e15",
+  "overall_status": "not-ready",
+  "criteria": [
+    {
+      "id": "LP8-TESTNET-OPERATIONS",
+      "requirement": "Public LEZ transactions used by Bonded Inbox are finalized and independently auditable.",
+      "owner": "testnet-evidence",
+      "required_scope": "public-testnet",
+      "status": "verified-testnet",
+      "verification_command": "scripts/verify-lez-evidence.sh",
+      "pass_condition": "All 16 required transaction and block evidence rows pass the offline and live evidence gates.",
+      "evidence": [
+        "evidence/testnet/required-evidence.json"
+      ],
+      "gap": "This proves the recorded program, wallet, lifecycle, spending, and paid-task operations; it does not prove three running agents or Basecamp integration."
+    },
+    {
+      "id": "LP8-THREE-AGENTS",
+      "requirement": "Deploy separate Storage, Messaging, and Blockchain agents on LEZ testnet with reproducible evidence.",
+      "owner": "deployment",
+      "required_scope": "live-logos-core",
+      "status": "open",
+      "verification_command": "scripts/verify-live-deployments.sh",
+      "pass_condition": "Three distinct public identities report healthy after clean deploy, stop, and restart using isolated data directories.",
+      "evidence": [],
+      "gap": "The deployment CLI now starts and supervises pinned Logos Core instances with durable agent identities, but three official deployments have not yet completed the live verification gate."
+    },
+    {
+      "id": "LP8-OWNER-CHANNEL",
+      "requirement": "Connect an agent to its owner through encrypted Logos Messaging using a separate Logos app instance.",
+      "owner": "messaging-integration",
+      "required_scope": "live-logos-core",
+      "status": "open",
+      "verification_command": "scripts/verify-owner-channel.sh",
+      "pass_condition": "A separate owner instance receives, reviews, and replies to an agent message, and the state survives agent restart.",
+      "evidence": [],
+      "gap": "Messaging skills pass with local adapters, but no separate live owner instance has been recorded."
+    },
+    {
+      "id": "LP8-BASECAMP",
+      "requirement": "Provide a Basecamp owner interface backed by live module state and actions.",
+      "owner": "basecamp-integration",
+      "required_scope": "live-logos-core",
+      "status": "open",
+      "verification_command": "scripts/verify-basecamp-live.sh",
+      "pass_condition": "The UI displays live agent state and its review, approval, settings, refresh, offline, and recovery actions affect durable module state.",
+      "evidence": [
+        "basecamp/BondedInbox/BondedInboxPage.qml"
+      ],
+      "gap": "The reusable UI and preview exist, but the preview is fixture-backed and is not evidence of a live backend connection."
+    },
+    {
+      "id": "LP8-DEFAULT-SKILLS",
+      "requirement": "Run the required Storage, Messaging, Blockchain, A2A, and Meta skills through production adapters.",
+      "owner": "core-integration",
+      "required_scope": "live-logos-core",
+      "status": "open",
+      "verification_command": "scripts/verify-live-skills.sh",
+      "pass_condition": "Every default skill passes through official modules, including failure isolation and recovery, without a memory adapter.",
+      "evidence": [],
+      "gap": "Production adapters now target official Delivery, Storage, and LEZ Core APIs, but the complete live 21-skill matrix has not yet been recorded."
+    },
+    {
+      "id": "LP8-A2A-PAID-TASK",
+      "requirement": "Demonstrate live discovery, task coordination, and autonomous paid settlement between at least two agents.",
+      "owner": "a2a-integration",
+      "required_scope": "public-testnet",
+      "status": "open",
+      "verification_command": "scripts/verify-live-a2a.sh",
+      "pass_condition": "Signed Agent Cards are discovered over Logos Messaging and a task completes with a finalized below-limit LEZ payment and replay protection.",
+      "evidence": [
+        "evidence/testnet/paid-task/settlement.json"
+      ],
+      "gap": "A finalized paid-task transaction exists, but live two-agent discovery and coordination have not been recorded."
+    },
+    {
+      "id": "LP8-USE-CASES",
+      "requirement": "Run three illustrative use cases end to end on the pinned testnet release.",
+      "owner": "demo-integration",
+      "required_scope": "public-testnet",
+      "status": "open",
+      "verification_command": "scripts/verify-live-use-cases.sh",
+      "pass_condition": "File vault, paid skill marketplace, and on-chain event alert flows each pass from fresh state with one documented recovery check.",
+      "evidence": [],
+      "gap": "Individual local skills and public transactions are tested, but the three complete live flows are not yet proven."
+    },
+    {
+      "id": "LP8-COMPUTE-UNITS",
+      "requirement": "Report official LEZ compute-unit cost for each on-chain operation used by the project.",
+      "owner": "performance-evidence",
+      "required_scope": "public-testnet",
+      "status": "open",
+      "verification_command": "scripts/verify-lez-compute-units.sh",
+      "pass_condition": "Every distinct deployment, program call, and transfer maps to an official receipt with a transaction, block, and compute-unit value.",
+      "evidence": [],
+      "gap": "Local timing exists, but local timing is not official compute-unit evidence."
+    },
+    {
+      "id": "LP8-REAL-PROOF-CI",
+      "requirement": "Run the standalone sequencer demonstration with RISC0_DEV_MODE=0 in default-branch CI.",
+      "owner": "ci-infrastructure",
+      "required_scope": "ci-real-proof",
+      "status": "open",
+      "verification_command": "scripts/evaluator-real.sh",
+      "pass_condition": "The latest default-branch real-proof-e2e job succeeds rather than skips and publishes the bounded verification result without secrets.",
+      "evidence": [
+        "evidence/standalone/official-wallet-real-proof-v2.json"
+      ],
+      "gap": "The local standalone artifact passes with development mode disabled, but the GitHub job remains opt-in and is currently skipped."
+    },
+    {
+      "id": "LP8-DOCUMENTATION",
+      "requirement": "Provide evaluator-ready architecture, integration, deployment, security, skill, performance, and demo documentation.",
+      "owner": "release",
+      "required_scope": "clean-clone",
+      "status": "open",
+      "verification_command": "scripts/verify.sh",
+      "pass_condition": "A clean clone passes the release matrix and an evaluator can reproduce all live flows using only the four tracked Markdown files.",
+      "evidence": [
+        "README.md",
+        "docs/OPERATIONS.md",
+        "SECURITY.md",
+        "CONTRIBUTING.md"
+      ],
+      "gap": "Local setup is documented; live deployment, CU results, and three verified live flows remain incomplete."
+    },
+    {
+      "id": "LP8-VIDEO",
+      "requirement": "Publish the narrated demonstration required by the prize specification.",
+      "owner": "project-owner",
+      "required_scope": "submission",
+      "status": "owner-gated",
+      "verification_command": "Owner review of the final public video URL",
+      "pass_condition": "The owner approves a public video showing the verified release, three agents, Basecamp, A2A settlement, and real proof generation.",
+      "evidence": [],
+      "gap": "Execution is prohibited until the owner separately approves recording after all technical gates pass."
+    },
+    {
+      "id": "LP8-SUBMISSION",
+      "requirement": "Create the final prize submission using the verified release and public evidence.",
+      "owner": "project-owner",
+      "required_scope": "submission",
+      "status": "owner-gated",
+      "verification_command": "Owner review of the final submission diff and public links",
+      "pass_condition": "All technical criteria and the video pass, then the owner explicitly authorizes the submission PR.",
+      "evidence": [],
+      "gap": "No submission or pull request may be created without a new explicit owner instruction."
+    }
+  ]
+}

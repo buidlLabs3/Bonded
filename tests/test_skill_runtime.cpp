@@ -4,6 +4,7 @@
 #include "security/crypto.h"
 
 #include <iostream>
+#include <filesystem>
 #include <set>
 #include <stdexcept>
 
@@ -86,6 +87,39 @@ int main()
               "meta status skill failed");
         check(status.at("messaging_encryption_public_key").get<std::string>().size() == 64,
               "runtime status omitted the X25519 messaging key");
+
+        const auto identity_directory = std::filesystem::temp_directory_path() /
+                                        ("bonded-identity-" + bonded::Crypto::randomHex(8));
+        const Json persistent_configuration{{"network", "lez-testnet"},
+                                            {"data_directory", identity_directory.string()}};
+        std::string first_agent_id;
+        std::string first_encryption_key;
+        {
+            SkillRegistry first_registry;
+            SkillRuntime first_runtime(first_registry, Profile::Vault,
+                                       persistent_configuration, [](const Json&) {});
+            const auto first_status = first_runtime.status();
+            first_agent_id = first_status.at("agent_id").get<std::string>();
+            first_encryption_key =
+                first_status.at("messaging_encryption_public_key").get<std::string>();
+        }
+        {
+            SkillRegistry second_registry;
+            SkillRuntime second_runtime(second_registry, Profile::Vault,
+                                        persistent_configuration, [](const Json&) {});
+            const auto second_status = second_runtime.status();
+            check(second_status.at("agent_id") == first_agent_id &&
+                      second_status.at("messaging_encryption_public_key") ==
+                          first_encryption_key,
+                  "runtime identity changed across restart");
+        }
+        const auto identity_path = identity_directory / "identity.json";
+        check((std::filesystem::status(identity_path).permissions() &
+               std::filesystem::perms::group_all) == std::filesystem::perms::none &&
+                  (std::filesystem::status(identity_path).permissions() &
+                   std::filesystem::perms::others_all) == std::filesystem::perms::none,
+              "runtime identity is not owner-only");
+        std::filesystem::remove_all(identity_directory);
 
         SkillRegistry injected_registry;
         bonded::RuntimeAdapters adapters{

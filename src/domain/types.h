@@ -74,6 +74,13 @@ struct BondRecord {
     std::optional<SettlementOutcome> outcome;
 };
 
+struct WalletTransfer {
+    std::string id;
+    std::string recipient;
+    std::uint64_t amount{0};
+    std::uint64_t timestamp_unix{0};
+};
+
 class DomainError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;

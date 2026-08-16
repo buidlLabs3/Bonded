@@ -44,6 +44,8 @@ public:
     void acknowledgeOutbox(std::int64_t id);
     void recordProcessedEvent(const std::string& event_id);
     bool hasProcessedEvent(const std::string& event_id) const;
+    void recordWalletTransfer(const WalletTransfer& transfer);
+    std::vector<WalletTransfer> walletHistory() const;
 
 private:
     void execute(const std::string& sql) const;

@@ -1,0 +1,16 @@
+module lez_core {
+  version "0.4.0"
+  description "Bonded Inbox subset of the official LEZ Core module interface"
+  category "blockchain"
+  depends []
+
+  method get_balance(account_id_hex: tstr, is_public: bool) -> tstr
+  method get_account_public(account_id_hex: tstr) -> tstr
+  method get_account_private(account_id_hex: tstr) -> tstr
+  method transfer_public(from_hex: tstr, to_hex: tstr, amount_le16_hex: tstr) -> tstr
+  method transfer_private_owned(from_hex: tstr, to_hex: tstr, amount_le16_hex: tstr) -> tstr
+  method send_generic_public_transaction(account_ids: [tstr], signing_requirements: [bool], instruction: [int], program_id_hex: tstr) -> tstr
+  method send_generic_private_transaction(account_ids: [tstr], instruction: [int], program_elf: bstr, program_dependencies: [bstr]) -> tstr
+  method send_program_deployment_transaction(program_elf: bstr) -> tstr
+  method poll_transaction_status(tx_hash_hex: tstr) -> bool
+}

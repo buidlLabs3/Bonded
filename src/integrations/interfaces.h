@@ -16,13 +16,6 @@ struct StoredObject {
     std::uint64_t size{0};
 };
 
-struct WalletTransfer {
-    std::string id;
-    std::string recipient;
-    std::uint64_t amount{0};
-    std::uint64_t timestamp_unix{0};
-};
-
 class MessagingAdapter {
 public:
     virtual ~MessagingAdapter() = default;
