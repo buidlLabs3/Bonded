@@ -12,6 +12,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isrc \
     tests/test_skill_runtime.cpp \
     src/domain/state_machine.cpp \
     src/security/crypto.cpp \
+    src/storage/database.cpp \
     src/integrations/memory_adapters.cpp \
     src/integrations/logos_adapters.cpp \
     src/runtime/default_skill_catalog.cpp \

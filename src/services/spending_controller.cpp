@@ -1,14 +1,47 @@
 #include "services/spending_controller.h"
 
+#include <limits>
+
 namespace bonded {
 
-SpendingController::SpendingController(WalletAdapter& wallet, SpendingPolicy policy)
-    : wallet_(wallet), policy_(policy)
+namespace {
+
+ApprovalState approvalState(const std::string& state)
+{
+    if (state == "pending") return ApprovalState::Pending;
+    if (state == "approved") return ApprovalState::Approved;
+    if (state == "denied") return ApprovalState::Denied;
+    if (state == "expired") return ApprovalState::Expired;
+    if (state == "executed") return ApprovalState::Executed;
+    throw DomainError("unknown persisted approval state");
+}
+
+std::uint64_t approvalExpiry(std::uint64_t now_unix, std::uint64_t timeout)
+{
+    if (now_unix > std::numeric_limits<std::uint64_t>::max() - timeout) {
+        throw DomainError("spending approval expiry overflow");
+    }
+    return now_unix + timeout;
+}
+
+} // namespace
+
+SpendingController::SpendingController(WalletAdapter& wallet, SpendingPolicy policy, Load load,
+                                       Save save)
+    : wallet_(wallet), policy_(policy), save_(std::move(save))
 {
     if (policy_.per_transaction == 0 || policy_.per_period == 0 || policy_.period_seconds == 0 ||
         policy_.approval_timeout_seconds == 0) {
         throw DomainError("spending policy limits and periods must be positive");
     }
+    if (load) {
+        for (auto& proposal : load()) {
+            if (proposal.id.empty() || !proposals_.emplace(proposal.id, proposal).second) {
+                throw DomainError("persisted spending proposal is invalid or duplicated");
+            }
+        }
+    }
+    sequence_ = proposals_.size();
 }
 
 std::uint64_t SpendingController::periodSpend(std::uint64_t now_unix) const
@@ -27,26 +60,45 @@ std::uint64_t SpendingController::periodSpend(std::uint64_t now_unix) const
 }
 
 SpendingProposal SpendingController::propose(const std::string& recipient, std::uint64_t amount,
-                                             std::uint64_t now_unix)
+                                             std::uint64_t now_unix,
+                                             const std::string& request_id)
 {
     if (recipient.empty() || amount == 0) {
         throw DomainError("spending recipient and positive amount are required");
     }
     std::lock_guard lock(mutex_);
+    const auto requested_id = request_id.empty() ? std::string{} : "spend:" + request_id;
+    if (!requested_id.empty()) {
+        const auto existing = proposals_.find(requested_id);
+        if (existing != proposals_.end()) {
+            if (existing->second.recipient != recipient || existing->second.amount != amount) {
+                throw DomainError("spending request id was reused with different parameters");
+            }
+            return existing->second;
+        }
+    }
     const auto spent = periodSpend(now_unix);
     const auto period_available = spent >= policy_.per_period ? 0 : policy_.per_period - spent;
     if (amount <= policy_.per_transaction && amount <= period_available) {
-        const std::string id = "spend-" + std::to_string(++sequence_);
-        const auto transfer_id = wallet_.send(recipient, amount, now_unix);
-        SpendingProposal executed{id, recipient, amount, now_unix, now_unix,
-                                  ApprovalState::Executed, transfer_id};
-        proposals_.emplace(id, executed);
-        return executed;
+        const std::string id = requested_id.empty() ? "spend-" + std::to_string(++sequence_)
+                                                    : requested_id;
+        SpendingProposal proposal{id, recipient, amount, now_unix, now_unix,
+                                  ApprovalState::Approved, ""};
+        proposals_.emplace(id, proposal);
+        if (save_) save_(proposal);
+        proposal.transfer_id = wallet_.send(recipient, amount, now_unix);
+        proposal.state = ApprovalState::Executed;
+        proposals_.at(id) = proposal;
+        if (save_) save_(proposal);
+        return proposal;
     }
-    const std::string id = "approval-" + std::to_string(++sequence_);
+    const std::string id = requested_id.empty() ? "approval-" + std::to_string(++sequence_)
+                                                : requested_id;
     SpendingProposal pending{id, recipient, amount, now_unix,
-                             now_unix + policy_.approval_timeout_seconds, ApprovalState::Pending, ""};
+                             approvalExpiry(now_unix, policy_.approval_timeout_seconds),
+                             ApprovalState::Pending, ""};
     proposals_.emplace(id, pending);
+    if (save_) save_(pending);
     return pending;
 }
 
@@ -69,8 +121,10 @@ SpendingProposal SpendingController::approve(const std::string& proposal_id,
         throw DomainError("spending proposal is not approvable");
     }
     proposal.state = ApprovalState::Approved;
+    if (save_) save_(proposal);
     proposal.transfer_id = wallet_.send(proposal.recipient, proposal.amount, now_unix);
     proposal.state = ApprovalState::Executed;
+    if (save_) save_(proposal);
     return proposal;
 }
 
@@ -82,6 +136,7 @@ SpendingProposal SpendingController::deny(const std::string& proposal_id)
         throw DomainError("spending proposal is not deniable");
     }
     found->second.state = ApprovalState::Denied;
+    if (save_) save_(found->second);
     return found->second;
 }
 
@@ -92,8 +147,21 @@ void SpendingController::expire(std::uint64_t now_unix)
         (void)id;
         if (proposal.state == ApprovalState::Pending && now_unix > proposal.expires_at) {
             proposal.state = ApprovalState::Expired;
+            if (save_) save_(proposal);
         }
     }
+}
+
+std::vector<SpendingProposal> SpendingController::list() const
+{
+    std::lock_guard lock(mutex_);
+    std::vector<SpendingProposal> result;
+    result.reserve(proposals_.size());
+    for (const auto& [id, proposal] : proposals_) {
+        (void)id;
+        result.push_back(proposal);
+    }
+    return result;
 }
 
 std::optional<SpendingProposal> SpendingController::get(const std::string& proposal_id) const
@@ -118,6 +186,28 @@ std::string toString(ApprovalState state)
         return "executed";
     }
     throw DomainError("unknown approval state");
+}
+
+void to_json(Json& json, const SpendingProposal& proposal)
+{
+    json = Json{{"id", proposal.id},
+                {"recipient", proposal.recipient},
+                {"amount", proposal.amount},
+                {"created_at", proposal.created_at},
+                {"expires_at", proposal.expires_at},
+                {"state", toString(proposal.state)},
+                {"transfer_id", proposal.transfer_id}};
+}
+
+void from_json(const Json& json, SpendingProposal& proposal)
+{
+    json.at("id").get_to(proposal.id);
+    json.at("recipient").get_to(proposal.recipient);
+    json.at("amount").get_to(proposal.amount);
+    json.at("created_at").get_to(proposal.created_at);
+    json.at("expires_at").get_to(proposal.expires_at);
+    proposal.state = approvalState(json.at("state").get<std::string>());
+    proposal.transfer_id = json.value("transfer_id", "");
 }
 
 } // namespace bonded

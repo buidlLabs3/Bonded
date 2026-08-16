@@ -97,6 +97,7 @@ if(BUILD_TESTING)
         src/runtime/skill_registry.cpp
         src/services/a2a_service.cpp
         src/services/configuration_service.cpp
+        src/services/messaging_service.cpp
         src/services/triage_service.cpp
     )
     target_include_directories(bonded_inbox_second_half_tests
@@ -109,6 +110,7 @@ if(BUILD_TESTING)
         tests/test_skill_runtime.cpp
         src/domain/state_machine.cpp
         src/security/crypto.cpp
+        src/storage/database.cpp
         src/integrations/memory_adapters.cpp
         src/runtime/default_skill_catalog.cpp
         src/runtime/skill_registry.cpp

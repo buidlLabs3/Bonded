@@ -11,6 +11,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include <limits>
+#include <map>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -439,26 +441,52 @@ void testLogosStorageAdapter()
 void testSpending()
 {
     MemoryWalletAdapter wallet(1000);
-    SpendingController spending(wallet, SpendingPolicy{100, 250, 1000, 100});
-    const auto automatic = spending.propose("translation-agent", 75, 1000);
+    std::map<std::string, bonded::SpendingProposal> persisted;
+    const auto load = [&] {
+        std::vector<bonded::SpendingProposal> proposals;
+        for (const auto& [id, proposal] : persisted) {
+            (void)id;
+            proposals.push_back(proposal);
+        }
+        return proposals;
+    };
+    const auto save = [&](const bonded::SpendingProposal& proposal) {
+        persisted[proposal.id] = proposal;
+    };
+    SpendingController spending(wallet, SpendingPolicy{100, 250, 1000, 100}, load, save);
+    const auto automatic = spending.propose("translation-agent", 75, 1000, "task-1");
     check(automatic.state == ApprovalState::Executed && wallet.balance() == 925,
           "below-limit spend was not autonomous");
+    SpendingController restarted(wallet, SpendingPolicy{100, 250, 1000, 100}, load, save);
+    check(restarted.propose("translation-agent", 75, 1001, "task-1").transfer_id ==
+              automatic.transfer_id && wallet.balance() == 925,
+          "replayed durable spend created another transfer");
+    expectDomainError(
+        [&] { restarted.propose("different-agent", 75, 1001, "task-1"); },
+        "spending request id was reused with different parameters");
 
-    const auto pending = spending.propose("expensive-agent", 150, 1010);
+    const auto pending = restarted.propose("expensive-agent", 150, 1010, "task-2");
     check(pending.state == ApprovalState::Pending && wallet.balance() == 925,
           "above-limit spend executed before approval");
-    const auto approved = spending.approve(pending.id, 1020);
+    SpendingController approval_restart(wallet, SpendingPolicy{100, 250, 1000, 100}, load, save);
+    const auto approved = approval_restart.approve(pending.id, 1020);
     check(approved.state == ApprovalState::Executed && wallet.balance() == 775,
           "approved spend did not execute once");
-    check(spending.approve(pending.id, 1030).transfer_id == approved.transfer_id,
+    check(approval_restart.approve(pending.id, 1030).transfer_id == approved.transfer_id,
           "duplicate approval created another transfer");
 
-    const auto expiring = spending.propose("offline-owner", 200, 1040);
-    spending.expire(1141);
-    check(spending.get(expiring.id)->state == ApprovalState::Expired,
+    const auto expiring = approval_restart.propose("offline-owner", 200, 1040, "task-3");
+    approval_restart.expire(1141);
+    check(approval_restart.get(expiring.id)->state == ApprovalState::Expired,
           "unanswered approval did not expire");
-    expectDomainError([&] { spending.approve(expiring.id, 1141); },
+    expectDomainError([&] { approval_restart.approve(expiring.id, 1141); },
                       "expired approval executed");
+    expectDomainError(
+        [&] {
+            approval_restart.propose("overflow", 200,
+                                     std::numeric_limits<std::uint64_t>::max(), "task-4");
+        },
+        "overflowing approval expiry was accepted");
 }
 
 void testLezWalletAdapter()

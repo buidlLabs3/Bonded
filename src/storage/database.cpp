@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <limits>
 #include <memory>
 
 namespace bonded {
@@ -34,6 +35,17 @@ std::string columnText(sqlite3_stmt* statement, int index)
 {
     const auto* value = sqlite3_column_text(statement, index);
     return value == nullptr ? std::string{} : reinterpret_cast<const char*>(value);
+}
+
+void bindUnsigned(sqlite3_stmt* statement, int index, std::uint64_t value,
+                  const char* field)
+{
+    if (value > static_cast<std::uint64_t>(std::numeric_limits<sqlite3_int64>::max())) {
+        throw DomainError(std::string(field) + " exceeds the SQLite integer range");
+    }
+    if (sqlite3_bind_int64(statement, index, static_cast<sqlite3_int64>(value)) != SQLITE_OK) {
+        throw DomainError(std::string("cannot bind database ") + field);
+    }
 }
 
 } // namespace
@@ -99,7 +111,10 @@ void Database::migrate()
         execute("CREATE TABLE IF NOT EXISTS wallet_transfers("
                 "id TEXT PRIMARY KEY, recipient TEXT NOT NULL, amount INTEGER NOT NULL, "
                 "timestamp_unix INTEGER NOT NULL)");
-        execute("UPDATE schema_version SET version = 3 WHERE version < 3");
+        execute("CREATE TABLE IF NOT EXISTS runtime_records("
+                "kind TEXT NOT NULL, id TEXT NOT NULL, document TEXT NOT NULL, "
+                "PRIMARY KEY(kind, id))");
+        execute("UPDATE schema_version SET version = 4 WHERE version < 4");
         execute("COMMIT");
     } catch (...) {
         execute("ROLLBACK");
@@ -111,7 +126,7 @@ void Database::savePolicy(const InboxPolicy& policy)
 {
     Statement statement(db_, "INSERT INTO policies(inbox_id, version, document) VALUES(?, ?, ?)");
     bindText(statement.get(), 1, policy.inbox_id);
-    sqlite3_bind_int64(statement.get(), 2, static_cast<sqlite3_int64>(policy.version));
+    bindUnsigned(statement.get(), 2, policy.version, "policy version");
     bindText(statement.get(), 3, Json(policy).dump());
     if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         throw DomainError(sqlite3_errmsg(db_));
@@ -136,7 +151,7 @@ bool Database::createMessage(const MessageRecord& message, const std::string& id
     bindText(statement.get(), 1, message.id);
     bindText(statement.get(), 2, idempotency_key);
     bindText(statement.get(), 3, Json(message).dump());
-    sqlite3_bind_int64(statement.get(), 4, static_cast<sqlite3_int64>(message.revision));
+    bindUnsigned(statement.get(), 4, message.revision, "message revision");
     if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         throw DomainError(sqlite3_errmsg(db_));
     }
@@ -166,14 +181,24 @@ std::optional<MessageRecord> Database::message(const std::string& message_id,
     return std::nullopt;
 }
 
+std::vector<MessageRecord> Database::messages() const
+{
+    Statement statement(db_, "SELECT document FROM messages ORDER BY id");
+    std::vector<MessageRecord> result;
+    while (sqlite3_step(statement.get()) == SQLITE_ROW) {
+        result.push_back(Json::parse(columnText(statement.get(), 0)).get<MessageRecord>());
+    }
+    return result;
+}
+
 void Database::updateMessage(const MessageRecord& message, std::uint64_t previous_revision)
 {
     Statement statement(db_, "UPDATE messages SET document = ?, revision = ? "
                              "WHERE id = ? AND revision = ?");
     bindText(statement.get(), 1, Json(message).dump());
-    sqlite3_bind_int64(statement.get(), 2, static_cast<sqlite3_int64>(message.revision));
+    bindUnsigned(statement.get(), 2, message.revision, "message revision");
     bindText(statement.get(), 3, message.id);
-    sqlite3_bind_int64(statement.get(), 4, static_cast<sqlite3_int64>(previous_revision));
+    bindUnsigned(statement.get(), 4, previous_revision, "previous message revision");
     if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         throw DomainError(sqlite3_errmsg(db_));
     }
@@ -286,7 +311,7 @@ std::vector<OutboxRecord> Database::pendingOutbox(std::size_t limit) const
 {
     Statement statement(db_, "SELECT id, topic, payload, attempts FROM outbox "
                              "WHERE acknowledged = 0 ORDER BY id LIMIT ?");
-    sqlite3_bind_int64(statement.get(), 1, static_cast<sqlite3_int64>(limit));
+    bindUnsigned(statement.get(), 1, limit, "outbox limit");
     std::vector<OutboxRecord> result;
     while (sqlite3_step(statement.get()) == SQLITE_ROW) {
         result.push_back({sqlite3_column_int64(statement.get(), 0), columnText(statement.get(), 1),
@@ -331,9 +356,8 @@ void Database::recordWalletTransfer(const WalletTransfer& transfer)
              "VALUES(?, ?, ?, ?)");
     bindText(statement.get(), 1, transfer.id);
     bindText(statement.get(), 2, transfer.recipient);
-    sqlite3_bind_int64(statement.get(), 3, static_cast<sqlite3_int64>(transfer.amount));
-    sqlite3_bind_int64(statement.get(), 4,
-                       static_cast<sqlite3_int64>(transfer.timestamp_unix));
+    bindUnsigned(statement.get(), 3, transfer.amount, "wallet amount");
+    bindUnsigned(statement.get(), 4, transfer.timestamp_unix, "wallet timestamp");
     if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         throw DomainError(sqlite3_errmsg(db_));
     }
@@ -351,6 +375,37 @@ std::vector<WalletTransfer> Database::walletHistory() const
              static_cast<std::uint64_t>(sqlite3_column_int64(statement.get(), 3))});
     }
     return transfers;
+}
+
+void Database::upsertRuntimeRecord(const std::string& kind, const std::string& id,
+                                   const Json& document)
+{
+    if (kind.empty() || id.empty() || !document.is_object()) {
+        throw DomainError("runtime record kind, id, and object document are required");
+    }
+    Statement statement(
+        db_, "INSERT INTO runtime_records(kind, id, document) VALUES(?, ?, ?) "
+             "ON CONFLICT(kind, id) DO UPDATE SET document = excluded.document");
+    bindText(statement.get(), 1, kind);
+    bindText(statement.get(), 2, id);
+    bindText(statement.get(), 3, document.dump());
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        throw DomainError(sqlite3_errmsg(db_));
+    }
+}
+
+std::vector<Json> Database::runtimeRecords(const std::string& kind) const
+{
+    if (kind.empty()) {
+        throw DomainError("runtime record kind is required");
+    }
+    Statement statement(db_, "SELECT document FROM runtime_records WHERE kind = ? ORDER BY id");
+    bindText(statement.get(), 1, kind);
+    std::vector<Json> records;
+    while (sqlite3_step(statement.get()) == SQLITE_ROW) {
+        records.push_back(Json::parse(columnText(statement.get(), 0)));
+    }
+    return records;
 }
 
 } // namespace bonded

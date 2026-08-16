@@ -16,11 +16,92 @@ Page {
     property var pendingMessages: []
     property var activeTasks: []
     property var approvals: []
+    property string lastError: ""
+    readonly property bool bridgeAvailable: typeof logos !== "undefined"
 
     signal refreshRequested()
     signal decisionRequested(string messageId, string decision)
     signal configurationRequested(var changes)
     signal approvalRequested(string proposalId, bool approved)
+
+    function decodedCall(method, arguments) {
+        var value = JSON.parse(logos.callModule("bonded_inbox", method, arguments))
+        if (typeof value === "string")
+            value = JSON.parse(value)
+        if (!value.ok)
+            throw new Error(value.error && value.error.message
+                            ? value.error.message : qsTr("Module request failed"))
+        return value.result
+    }
+
+    function refreshBackend() {
+        if (!bridgeAvailable) {
+            refreshRequested()
+            return
+        }
+        loading = true
+        try {
+            var state = decodedCall("getOwnerState", [])
+            pendingMessages = state.messages || []
+            activeTasks = state.tasks || []
+            approvals = state.approvals || []
+            connectionState = state.runtime && state.runtime.state === "ready"
+                              ? "online" : "degraded"
+            lastError = ""
+        } catch (error) {
+            connectionState = "offline"
+            lastError = error.message
+        } finally {
+            loading = false
+        }
+    }
+
+    function decideMessageBackend(messageId, decision) {
+        if (!bridgeAvailable) {
+            decisionRequested(messageId, decision)
+            return
+        }
+        try {
+            decodedCall("decideMessage", [JSON.stringify({
+                "message_id": messageId,
+                "decision": decision,
+                "explicit_owner_action": true
+            })])
+            selectedMessageId = ""
+            refreshBackend()
+        } catch (error) {
+            lastError = error.message
+        }
+    }
+
+    function decideSpendingBackend(proposalId, approved) {
+        if (!bridgeAvailable) {
+            approvalRequested(proposalId, approved)
+            return
+        }
+        try {
+            decodedCall("decideSpending", [JSON.stringify({
+                "proposal_id": proposalId,
+                "approved": approved,
+                "now_unix": Math.floor(Date.now() / 1000)
+            })])
+            refreshBackend()
+        } catch (error) {
+            lastError = error.message
+        }
+    }
+
+    Component.onCompleted: {
+        if (bridgeAvailable)
+            Qt.callLater(refreshBackend)
+    }
+
+    Timer {
+        interval: 3000
+        running: root.bridgeAvailable
+        repeat: true
+        onTriggered: root.refreshBackend()
+    }
 
     header: ToolBar {
         RowLayout {
@@ -38,7 +119,7 @@ Page {
             }
             ToolButton {
                 text: "\u21bb"
-                onClicked: root.refreshRequested()
+                onClicked: root.refreshBackend()
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Refresh")
                 Accessible.name: qsTr("Refresh")
@@ -113,7 +194,7 @@ Page {
                         Button {
                             text: qsTr("Accept")
                             enabled: root.selectedMessageId !== ""
-                            onClicked: root.decisionRequested(root.selectedMessageId, "accepted")
+                            onClicked: root.decideMessageBackend(root.selectedMessageId, "accepted")
                         }
                         Button {
                             text: qsTr("Reject")
@@ -154,11 +235,11 @@ Page {
                     }
                     Button {
                         text: qsTr("Deny")
-                        onClicked: root.approvalRequested(approvalDelegate.modelData.id, false)
+                        onClicked: root.decideSpendingBackend(approvalDelegate.modelData.id, false)
                     }
                     Button {
                         text: qsTr("Approve")
-                        onClicked: root.approvalRequested(approvalDelegate.modelData.id, true)
+                        onClicked: root.decideSpendingBackend(approvalDelegate.modelData.id, true)
                     }
                 }
             }
@@ -193,7 +274,7 @@ Page {
         standardButtons: Dialog.Cancel | Dialog.Ok
         anchors.centerIn: parent
         width: Math.min(parent.width - 24, 480)
-        onAccepted: root.decisionRequested(root.selectedMessageId, "rejected")
+        onAccepted: root.decideMessageBackend(root.selectedMessageId, "rejected")
         contentItem: Label {
             text: qsTr("The bond will be sent to %1. It cannot be paid to the owner.")
                   .arg(root.rejectionSink)

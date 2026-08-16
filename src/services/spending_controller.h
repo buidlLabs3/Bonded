@@ -2,10 +2,12 @@
 
 #include "integrations/interfaces.h"
 
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace bonded {
 
@@ -30,13 +32,18 @@ struct SpendingProposal {
 
 class SpendingController {
 public:
-    SpendingController(WalletAdapter& wallet, SpendingPolicy policy);
+    using Load = std::function<std::vector<SpendingProposal>()>;
+    using Save = std::function<void(const SpendingProposal&)>;
+
+    SpendingController(WalletAdapter& wallet, SpendingPolicy policy, Load load = {},
+                       Save save = {});
     SpendingProposal propose(const std::string& recipient, std::uint64_t amount,
-                             std::uint64_t now_unix);
+                             std::uint64_t now_unix, const std::string& request_id = "");
     SpendingProposal approve(const std::string& proposal_id, std::uint64_t now_unix);
     SpendingProposal deny(const std::string& proposal_id);
     void expire(std::uint64_t now_unix);
     std::optional<SpendingProposal> get(const std::string& proposal_id) const;
+    std::vector<SpendingProposal> list() const;
 
 private:
     std::uint64_t periodSpend(std::uint64_t now_unix) const;
@@ -44,9 +51,12 @@ private:
     SpendingPolicy policy_;
     mutable std::mutex mutex_;
     std::map<std::string, SpendingProposal> proposals_;
+    Save save_;
     std::uint64_t sequence_{0};
 };
 
 std::string toString(ApprovalState state);
+void to_json(Json& json, const SpendingProposal& proposal);
+void from_json(const Json& json, SpendingProposal& proposal);
 
 } // namespace bonded

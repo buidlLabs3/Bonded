@@ -2,15 +2,30 @@
 
 #include "security/crypto.h"
 
+#include <limits>
 #include <set>
 
 namespace bonded {
 
-ConfigurationService::ConfigurationService(Json initial_values, std::string owner_public_key)
-    : values_(std::move(initial_values)), owner_public_key_(std::move(owner_public_key))
+ConfigurationService::ConfigurationService(Json initial_values, std::string owner_public_key,
+                                           Load load, Save save)
+    : values_(std::move(initial_values)), owner_public_key_(std::move(owner_public_key)),
+      save_(std::move(save))
 {
     if (!values_.is_object()) {
         throw DomainError("runtime configuration must be an object");
+    }
+    if (load) {
+        const auto persisted = load();
+        if (persisted.has_value()) {
+            if (!persisted->is_object() || !persisted->contains("revision") ||
+                !persisted->contains("values") || !persisted->at("values").is_object()) {
+                throw DomainError("persisted runtime configuration is invalid");
+            }
+            revision_ = persisted->at("revision").get<std::uint64_t>();
+            values_ = persisted->at("values");
+            validateChanges(values_);
+        }
     }
 }
 
@@ -75,8 +90,14 @@ Json ConfigurationService::update(const Json& request)
     for (const auto& [key, value] : changes.items()) {
         updated[key] = value;
     }
+    if (revision_ == std::numeric_limits<std::uint64_t>::max()) {
+        throw DomainError("configuration revision overflow");
+    }
+    const auto next_revision = revision_ + 1;
+    const Json snapshot{{"revision", next_revision}, {"values", updated}};
+    if (save_) save_(snapshot);
     values_ = std::move(updated);
-    ++revision_;
+    revision_ = next_revision;
     return Json{{"revision", revision_}, {"values", values_}};
 }
 

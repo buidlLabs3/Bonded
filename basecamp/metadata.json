@@ -8,6 +8,6 @@
   "description": "Basecamp owner experience for the Bonded Inbox core module",
   "author": "buidlLabs3",
   "view": "BondedInbox/BondedInboxPage.qml",
-  "dependencies": [],
+  "dependencies": ["bonded_inbox"],
   "capabilities": []
 }

@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <poll.h>
 #include <stdexcept>
 #include <string>
@@ -156,6 +157,8 @@ void testDatabase()
     MessageStateMachine::transition(message, MessageState::BondPending, 0);
     database.updateMessage(message, 0);
     check(database.message("m1")->revision == 1, "message revision was not persisted");
+    check(database.messages().size() == 1 && database.messages().front().id == "m1",
+          "message list did not return durable inbox state");
     expectDomainError([&] { database.updateMessage(message, 0); },
                       "stale database revision succeeded");
 
@@ -172,6 +175,19 @@ void testDatabase()
     check(wallet_history.size() == 1 && wallet_history.front().id == "tx-1" &&
               wallet_history.front().amount == 25,
           "wallet transfer history was not durably deduplicated");
+    expectDomainError(
+        [&] {
+            database.recordWalletTransfer(
+                {"tx-overflow", "recipient", std::numeric_limits<std::uint64_t>::max(), 1001});
+        },
+        "wallet amount outside SQLite's integer range was accepted");
+    expectDomainError(
+        [&] {
+            database.recordWalletTransfer(
+                {"tx-time-overflow", "recipient", 1,
+                 std::numeric_limits<std::uint64_t>::max()});
+        },
+        "wallet timestamp outside SQLite's integer range was accepted");
 
     BondRecord bond{
         "bond:m1", "m1", "sender", "owner", "sink", "policy", 50, 2000, std::nullopt};
@@ -188,6 +204,11 @@ void testDatabase()
           "deduplicated outbox record was not created");
     check(!database.enqueueOnce("receipt:m1", "receipt", "payload"),
           "deduplicated outbox record was created twice");
+    database.upsertRuntimeRecord("test", "one", Json{{"revision", 1}});
+    database.upsertRuntimeRecord("test", "one", Json{{"revision", 2}});
+    const auto runtime_records = database.runtimeRecords("test");
+    check(runtime_records.size() == 1 && runtime_records.front().at("revision") == 2,
+          "runtime record was not durably upserted");
 }
 
 void testProcessInterruptionRecovery()

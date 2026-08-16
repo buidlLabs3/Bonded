@@ -3,12 +3,14 @@
 #include "runtime/default_skill_catalog.h"
 #include "integrations/memory_adapters.h"
 #include "security/crypto.h"
+#include "storage/database.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <filesystem>
 #include <fcntl.h>
 #include <fstream>
+#include <optional>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -27,6 +29,52 @@ std::vector<std::string> profileNames(const SkillRegistry& registry, Profile pro
 std::vector<std::string> members(const Json& input)
 {
     return input.at("members").get<std::vector<std::string>>();
+}
+
+std::vector<SpendingProposal> loadSpendingProposals(Database* database)
+{
+    std::vector<SpendingProposal> proposals;
+    if (database == nullptr) {
+        return proposals;
+    }
+    for (const auto& record : database->runtimeRecords("spending-proposal")) {
+        proposals.push_back(record.get<SpendingProposal>());
+    }
+    return proposals;
+}
+
+std::vector<AgentCard> loadAgentCards(Database* database)
+{
+    std::vector<AgentCard> cards;
+    if (database != nullptr) {
+        for (const auto& record : database->runtimeRecords("a2a-card")) {
+            cards.push_back(record.get<AgentCard>());
+        }
+    }
+    return cards;
+}
+
+std::vector<A2ATask> loadA2ATasks(Database* database)
+{
+    std::vector<A2ATask> tasks;
+    if (database != nullptr) {
+        for (const auto& record : database->runtimeRecords("a2a-task")) {
+            tasks.push_back(record.get<A2ATask>());
+        }
+    }
+    return tasks;
+}
+
+std::optional<Json> loadRuntimeConfiguration(Database* database)
+{
+    if (database == nullptr) {
+        return std::nullopt;
+    }
+    const auto records = database->runtimeRecords("configuration");
+    if (records.size() > 1) {
+        throw DomainError("multiple persisted runtime configurations exist");
+    }
+    return records.empty() ? std::nullopt : std::optional<Json>{records.front()};
 }
 
 template <typename Adapter>
@@ -184,7 +232,7 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
 
 SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
                            std::function<void(const Json&)> owner_action_required,
-                           RuntimeAdapters adapters)
+                           RuntimeAdapters adapters, Database* database)
     : registry_(registry), profile_(profile),
       network_(configuration.value("network", "logos-local")),
       owner_action_required_(std::move(owner_action_required)),
@@ -203,8 +251,38 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
                                configuration.value("per_period_limit", std::uint64_t{500}),
                                configuration.value("period_seconds", std::uint64_t{86400}),
                                configuration.value("approval_timeout_seconds",
-                                                   std::uint64_t{3600})}),
-      a2a_(requireAdapter(program_adapter_, "program"), network_),
+                                                   std::uint64_t{3600})},
+                [database] { return loadSpendingProposals(database); },
+                [database](const SpendingProposal& proposal) {
+                    if (database != nullptr) {
+                        database->upsertRuntimeRecord("spending-proposal", proposal.id,
+                                                      Json(proposal));
+                    }
+                }),
+      a2a_(requireAdapter(messaging_adapter_, "messaging"), network_,
+           [database] { return loadAgentCards(database); },
+           [database](const AgentCard& card) {
+               if (database != nullptr) {
+                   database->upsertRuntimeRecord("a2a-card", card.agent_id, Json(card));
+               }
+           },
+           [database] { return loadA2ATasks(database); },
+           [database](const A2ATask& task) {
+               if (database != nullptr) {
+                   database->upsertRuntimeRecord("a2a-task", task.id, Json(task));
+               }
+           },
+           [this](const std::string& recipient, std::uint64_t amount,
+                  std::uint64_t now_unix, const std::string& request_id) {
+               const auto proposal =
+                   spending_.propose(recipient, amount, now_unix, request_id);
+               const auto output = spendingProposalJson(proposal);
+               if (proposal.state == ApprovalState::Pending && owner_action_required_) {
+                   owner_action_required_(Json{{"type", "spending.approval_required"},
+                                               {"proposal", output}});
+               }
+               return output;
+           }),
       configuration_(Json{{"classifier_enabled", configuration.value("classifier_enabled", true)},
                           {"rate_limit", configuration.value("rate_limit", std::uint64_t{10})},
                           {"owner_notifications",
@@ -212,7 +290,13 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
                           {"approval_timeout_seconds",
                            configuration.value("approval_timeout_seconds",
                                                std::uint64_t{3600})}},
-                     configuration.value("owner_public_key", ""))
+                     configuration.value("owner_public_key", ""),
+                     [database] { return loadRuntimeConfiguration(database); },
+                     [database](const Json& state) {
+                         if (database != nullptr) {
+                             database->upsertRuntimeRecord("configuration", "current", state);
+                         }
+                     })
 {
     const auto identity = runtimeIdentity(configuration);
     private_key_ = identity.private_key;
@@ -221,6 +305,7 @@ SkillRuntime::SkillRuntime(SkillRegistry& registry, Profile profile, const Json&
     encryption_public_key_ = identity.encryption_public_key;
     storage_key_ = identity.storage_key;
     agent_id_ = "npk:" + Crypto::sha256(public_key_).substr(0, 32);
+    a2a_.configureTransport(agent_id_, private_key_, public_key_, encryption_private_key_);
 }
 
 void SkillRuntime::registerDefaultSkills()
@@ -247,10 +332,15 @@ Json SkillRuntime::spendingProposalJson(const SpendingProposal& proposal)
 }
 
 AgentCard SkillRuntime::ownCard(std::uint64_t now_unix, std::uint64_t expires_at,
-                                std::uint64_t task_price) const
+                                std::uint64_t task_price,
+                                const std::string& payment_recipient) const
 {
     if (expires_at <= now_unix) {
         throw DomainError("Agent Card expiry must be in the future");
+    }
+    if (task_price > 0 &&
+        (payment_recipient.size() != 64 || Crypto::hexDecode(payment_recipient).size() != 32)) {
+        throw DomainError("paid Agent Card requires a 32-byte hex payment recipient");
     }
     AgentCard card{"lf.a2a.v1",
                    network_,
@@ -260,8 +350,9 @@ AgentCard SkillRuntime::ownCard(std::uint64_t now_unix, std::uint64_t expires_at
                    Json{{"streaming", true},
                         {"paid_tasks", true},
                         {"messaging_encryption", "x25519-aes-256-gcm"},
-                        {"messaging_encryption_public_key", encryption_public_key_}},
-                   "bonded/a2a/" + agent_id_,
+                        {"messaging_encryption_public_key", encryption_public_key_},
+                        {"payment_recipient", payment_recipient}},
+                   "/bonded-inbox/1/a2a-task/json",
                    task_price,
                    expires_at,
                    ""};
@@ -322,7 +413,8 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
     if (name == "wallet.send") {
         const auto proposal = spending_.propose(input.at("recipient").get<std::string>(),
                                                 input.at("amount").get<std::uint64_t>(),
-                                                input.at("now_unix").get<std::uint64_t>());
+                                                input.at("now_unix").get<std::uint64_t>(),
+                                                input.at("request_id").get<std::string>());
         const auto output = spendingProposalJson(proposal);
         if (proposal.state == ApprovalState::Pending && owner_action_required_) {
             owner_action_required_(Json{{"type", "spending.approval_required"},
@@ -360,7 +452,8 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
             return a2a_.publishCard(input.at("card").get<AgentCard>(), now);
         }
         const auto card = ownCard(now, input.at("expires_at").get<std::uint64_t>(),
-                                  input.value("task_price", std::uint64_t{0}));
+                                  input.value("task_price", std::uint64_t{0}),
+                                  input.value("payment_recipient", ""));
         if (input.value("publish", true)) {
             a2a_.publishCard(card, now);
         }
@@ -374,14 +467,17 @@ Json SkillRuntime::handler(const std::string& name, const Json& input)
         const auto action = input.value("action", "create");
         if (action == "complete") {
             return a2a_.complete(input.at("task_id").get<std::string>(),
-                                 input.value("output", Json::object()));
+                                 input.value("output", Json::object()),
+                                 input.at("now_unix").get<std::uint64_t>());
         }
         if (action == "fail") {
             return a2a_.fail(input.at("task_id").get<std::string>(),
-                             input.at("reason").get<std::string>());
+                             input.at("reason").get<std::string>(),
+                             input.at("now_unix").get<std::uint64_t>());
         }
         if (action == "input_required") {
-            return a2a_.requireInput(input.at("task_id").get<std::string>());
+            return a2a_.requireInput(input.at("task_id").get<std::string>(),
+                                     input.at("now_unix").get<std::uint64_t>());
         }
         A2ATask task{input.at("task_id").get<std::string>(),
                      input.value("requester", agent_id_),
@@ -451,6 +547,30 @@ Json SkillRuntime::status() const
                                        {"storage", storage_adapter_name_},
                                        {"wallet", wallet_adapter_name_},
                                        {"program", program_adapter_name_}}}};
+}
+
+Json SkillRuntime::ownerState() const
+{
+    Json approvals = Json::array();
+    for (const auto& proposal : spending_.list()) {
+        if (proposal.state == ApprovalState::Pending) {
+            approvals.push_back(spendingProposalJson(proposal));
+        }
+    }
+    return Json{{"runtime", status()},
+                {"approvals", std::move(approvals)},
+                {"tasks", a2a_.tasks()}};
+}
+
+Json SkillRuntime::decideSpending(const std::string& proposal_id, bool approved,
+                                  std::uint64_t now_unix)
+{
+    const auto proposal = approved ? spending_.approve(proposal_id, now_unix)
+                                   : spending_.deny(proposal_id);
+    if (proposal.state == ApprovalState::Executed) {
+        a2a_.recordSettlement(proposal.id, proposal.transfer_id, now_unix);
+    }
+    return spendingProposalJson(proposal);
 }
 
 } // namespace bonded

@@ -342,7 +342,7 @@ std::string BondedInboxImpl::initialize(const std::string& configuration_json)
         auto skill_runtime = std::make_unique<bonded::SkillRuntime>(
             *skills, profile, configuration, [this](const Json& proposal) {
                 ownerActionRequired(proposal.dump());
-            }, std::move(adapters));
+            }, std::move(adapters), database.get());
         skill_runtime->registerDefaultSkills();
         profile_name_ = profile_name;
         data_directory_ = data_directory;
@@ -438,6 +438,24 @@ std::string BondedInboxImpl::getStatus()
     }
 }
 
+std::string BondedInboxImpl::getOwnerState()
+{
+    try {
+        requireInitialized();
+        Json messages = Json::array();
+        for (const auto& message : database_->messages()) {
+            if (message.state == bonded::MessageState::PendingReview) {
+                messages.push_back(message);
+            }
+        }
+        auto state = skill_runtime_->ownerState();
+        state["messages"] = std::move(messages);
+        return ok(std::move(state)).dump();
+    } catch (const std::exception& error) {
+        return failure(error);
+    }
+}
+
 std::string BondedInboxImpl::publishPolicy(const std::string& policy_json)
 {
     try {
@@ -483,6 +501,25 @@ std::string BondedInboxImpl::decideMessage(const std::string& decision_json)
                           {"outcome", bonded::toString(*message.settlement)}}
                          .dump());
         return ok(Json(message)).dump();
+    } catch (const std::exception& error) {
+        return failure(error);
+    }
+}
+
+std::string BondedInboxImpl::decideSpending(const std::string& decision_json)
+{
+    try {
+        requireInitialized();
+        const auto decision = Json::parse(decision_json);
+        const auto proposal = skill_runtime_->decideSpending(
+            decision.at("proposal_id").get<std::string>(),
+            decision.at("approved").get<bool>(),
+            decision.at("now_unix").get<std::uint64_t>());
+        stateChanged(Json{{"type", "spending.decided"},
+                          {"proposal_id", proposal.at("id")},
+                          {"state", proposal.at("state")}}
+                         .dump());
+        return ok(proposal).dump();
     } catch (const std::exception& error) {
         return failure(error);
     }

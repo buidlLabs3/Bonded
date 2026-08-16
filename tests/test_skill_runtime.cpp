@@ -69,8 +69,12 @@ int main()
         check(sent.at("message_id").get<std::string>().starts_with("memory-message-"),
               "messaging send skill did not seal and dispatch an envelope");
 
-        const auto card = registry.invoke("agent.card", Profile::Vault,
-                                          Json{{"now_unix", 100}, {"expires_at", 1000}});
+        const auto card = registry.invoke(
+            "agent.card", Profile::Vault,
+            Json{{"now_unix", 100},
+                 {"expires_at", 1000},
+                 {"task_price", 5},
+                 {"payment_recipient", std::string(64, 'a')}});
         check(card.at("protocol") == "lf.a2a.v1", "A2A card skill returned wrong protocol");
         check(card.at("capabilities").at("messaging_encryption") ==
                   "x25519-aes-256-gcm" &&
@@ -82,6 +86,26 @@ int main()
                               Json{{"now_unix", 100}, {"skill", "storage.upload"}})
                       .size() == 1,
               "A2A discovery skill did not return the local card");
+        const auto task = registry.invoke(
+            "agent.task", Profile::Vault,
+            Json{{"task_id", "task-1"},
+                 {"provider", card.at("agent_id")},
+                 {"skill", "storage.upload"},
+                 {"input", Json{{"label", "demo"}}},
+                 {"price", 5},
+                 {"expires_at", 900},
+                 {"now_unix", 100}});
+        check(task.at("state") == "working" &&
+                  task.at("payment_reference").get<std::string>().empty(),
+              "A2A task claimed a nonexistent escrow payment");
+        const auto completed = registry.invoke(
+            "agent.task", Profile::Vault,
+            Json{{"action", "complete"},
+                 {"task_id", "task-1"},
+                 {"now_unix", 101},
+                 {"output", Json{{"address", "sha256:result"}}}});
+        check(completed.at("state") == "completed",
+              "A2A task did not complete without fake escrow calls");
         const auto status = registry.invoke("meta.status", Profile::Vault, Json::object());
         check(status.at("state") == "ready",
               "meta status skill failed");

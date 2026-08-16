@@ -20,9 +20,11 @@ public:
     ~BondedInboxImpl();
     std::string initialize(const std::string& configuration_json);
     std::string getStatus();
+    std::string getOwnerState();
     std::string publishPolicy(const std::string& policy_json);
     std::string submitMessage(const std::string& submission_json);
     std::string decideMessage(const std::string& decision_json);
+    std::string decideSpending(const std::string& decision_json);
     std::string invokeSkill(const std::string& request_json);
     void onContextReady() override;
 

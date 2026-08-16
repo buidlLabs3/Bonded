@@ -17,6 +17,7 @@ g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -Isrc \
     src/runtime/skill_registry.cpp \
     src/services/a2a_service.cpp \
     src/services/configuration_service.cpp \
+    src/services/messaging_service.cpp \
     src/services/triage_service.cpp \
     "${dependency_flags[@]}" -pthread -o "$test_binary"
 

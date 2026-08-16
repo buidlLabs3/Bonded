@@ -7,8 +7,10 @@
 #include "services/configuration_service.h"
 #include "services/triage_service.h"
 
+#include <chrono>
 #include <functional>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -25,7 +27,7 @@ using bonded::ConfigurationService;
 using bonded::Crypto;
 using bonded::Json;
 using bonded::KeywordClassifier;
-using bonded::MemoryProgramAdapter;
+using bonded::MemoryMessagingAdapter;
 using bonded::Profile;
 using bonded::RedactedTelemetry;
 using bonded::SkillDefinition;
@@ -80,7 +82,10 @@ void testTriageSafety()
 void testConfiguration()
 {
     const auto [private_key, public_key] = Crypto::generateEd25519KeyPair();
-    ConfigurationService configuration(Json{{"rate_limit", 5}}, public_key);
+    std::optional<Json> persisted;
+    ConfigurationService configuration(Json{{"rate_limit", 5}}, public_key,
+                                       [&] { return persisted; },
+                                       [&](const Json& state) { persisted = state; });
     Json request{{"expected_revision", 0},
                  {"changes", Json{{"rate_limit", 7}, {"classifier_enabled", true}}},
                  {"timestamp_unix", 100},
@@ -93,50 +98,110 @@ void testConfiguration()
                   "stale configuration revision was accepted");
     check(configuration.snapshot().dump().find("signature") == std::string::npos,
           "configuration snapshot leaked authorization material");
+    ConfigurationService restarted(Json{{"rate_limit", 1}}, public_key,
+                                   [&] { return persisted; });
+    check(restarted.snapshot().at("revision") == 1 &&
+              restarted.snapshot().at("values").at("rate_limit") == 7,
+          "owner configuration did not survive restart");
 }
 
 AgentCard signedCard(const std::string& id, const std::string& skill,
                      std::uint64_t price, const std::string& network,
-                     const std::string& private_key, const std::string& public_key)
+                     const std::string& private_key, const std::string& public_key,
+                     const std::string& encryption_public_key, std::uint64_t expires_at)
 {
-    AgentCard card{"lf.a2a.v1", network, id, public_key, {skill}, Json::object(),
-                   "a2a/cards/" + id, price, 1000, ""};
+    AgentCard card{"lf.a2a.v1", network, id, public_key, {skill},
+                   Json{{"messaging_encryption", "x25519-aes-256-gcm"},
+                        {"messaging_encryption_public_key", encryption_public_key},
+                        {"payment_recipient", std::string(64, 'b')}},
+                   "/bonded-inbox/1/a2a-task/json", price, expires_at, ""};
     return A2AService::signCard(std::move(card), private_key);
 }
 
 void testA2ALifecycle()
 {
-    MemoryProgramAdapter program;
-    A2AService a2a(program, "logos-local");
+    const auto now = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    MemoryMessagingAdapter messaging;
+    bool settled = false;
+    A2AService requester(
+        messaging, "logos-local", {}, {}, {}, {},
+        [&](const std::string& recipient, std::uint64_t amount,
+            std::uint64_t, const std::string& request_id) {
+            check(recipient == std::string(64, 'b') && amount == 12,
+                  "A2A completion requested the wrong settlement");
+            if (request_id == "a2a:task-3") {
+                return Json{{"id", "spend:a2a:task-3"},
+                            {"state", "pending"},
+                            {"transfer_id", ""}};
+            }
+            check(request_id == "a2a:task-1",
+                  "A2A completion used the wrong request id");
+            settled = true;
+            return Json{{"id", "spend:a2a:task-1"},
+                        {"state", "executed"},
+                        {"transfer_id", std::string(64, 'c')}};
+        });
+    A2AService provider(messaging, "logos-local");
     const auto [provider_private, provider_public] = Crypto::generateEd25519KeyPair();
+    const auto [provider_encryption_private, provider_encryption_public] =
+        Crypto::generateX25519KeyPair();
     const auto [peer_private, peer_public] = Crypto::generateEd25519KeyPair();
-    a2a.publishCard(signedCard("provider", "private.process", 12, "logos-local",
-                               provider_private, provider_public),
-                    100);
-    a2a.publishCard(signedCard("peer", "private.process", 12, "logos-local", peer_private,
-                               peer_public),
-                    100);
-    check(a2a.discover("private.process", 100).size() == 2,
+    const auto [peer_encryption_private, peer_encryption_public] =
+        Crypto::generateX25519KeyPair();
+    requester.configureTransport("peer", peer_private, peer_public, peer_encryption_private);
+    provider.configureTransport("provider", provider_private, provider_public,
+                                provider_encryption_private);
+    requester.publishCard(signedCard("peer", "private.process", 12, "logos-local",
+                                     peer_private, peer_public, peer_encryption_public,
+                                     now + 1000), now);
+    provider.publishCard(signedCard("provider", "private.process", 12, "logos-local",
+                                    provider_private, provider_public,
+                                    provider_encryption_public, now + 1000), now);
+    check(requester.discover("private.process", now).size() == 2 &&
+              provider.discover("private.process", now).size() == 2,
           "two A2A agents did not discover one another");
 
     A2ATask task{"task-1", "peer", "provider", "private.process", Json{{"object", "cid"}},
-                 Json::object(), 12, 900, A2ATaskState::Working, "", 0};
-    const auto working = a2a.createTask(task, 100);
-    check(!working.payment_reference.empty(), "paid A2A task did not lock payment");
-    check(a2a.complete(task.id, Json{{"result", "commitment"}}).state ==
+                 Json::object(), 12, now + 900, A2ATaskState::Working, "", 0};
+    const auto working = requester.createTask(task, now);
+    check(working.payment_reference.empty() &&
+              provider.subscribe(task.id).state == A2ATaskState::Working,
+          "A2A task did not arrive without claiming fake escrow");
+    provider.requireInput(task.id, now + 1);
+    check(requester.subscribe(task.id).state == A2ATaskState::InputRequired,
+          "encrypted input-required update did not reach requester");
+    check(provider.complete(task.id, Json{{"result", "commitment"}}, now + 2).state ==
               A2ATaskState::Completed,
           "A2A task did not complete");
-    check(a2a.complete(task.id, Json{{"ignored", true}}).revision == 1,
+    check(requester.subscribe(task.id).state == A2ATaskState::Completed,
+          "encrypted completion did not reach requester");
+    check(settled && requester.subscribe(task.id).payment_reference == std::string(64, 'c') &&
+              provider.subscribe(task.id).payment_reference == std::string(64, 'c'),
+          "paid A2A completion did not propagate its transfer reference");
+    check(provider.complete(task.id, Json{{"ignored", true}}, now + 3).revision == 3,
           "duplicate A2A completion was not idempotent");
 
     task.id = "task-2";
-    a2a.createTask(task, 100);
-    check(a2a.cancel(task.id, 150).state == A2ATaskState::Canceled,
-          "A2A cancellation did not refund and cancel");
-    expectFailure([&] { a2a.createTask(A2ATask{"bad", "peer", "provider", "private.process",
-                                               Json::object(), Json::object(), 99, 900,
-                                               A2ATaskState::Working, "", 0},
-                                               100); },
+    requester.createTask(task, now + 4);
+    check(requester.cancel(task.id, now + 5).state == A2ATaskState::Canceled &&
+              provider.subscribe(task.id).state == A2ATaskState::Canceled,
+          "encrypted A2A cancellation did not reach provider");
+    task.id = "task-3";
+    requester.createTask(task, now + 6);
+    provider.complete(task.id, Json{{"result", "approval-required"}}, now + 7);
+    check(requester.subscribe(task.id).state == A2ATaskState::InputRequired &&
+              requester.subscribe(task.id).payment_reference == "spend:a2a:task-3",
+          "above-limit A2A payment did not wait for owner approval");
+    requester.recordSettlement("spend:a2a:task-3", std::string(64, 'd'), now + 8);
+    check(requester.subscribe(task.id).state == A2ATaskState::Completed &&
+              provider.subscribe(task.id).payment_reference == std::string(64, 'd'),
+          "owner-approved A2A settlement did not complete on both agents");
+    expectFailure([&] { requester.createTask(
+                           A2ATask{"bad", "peer", "provider", "private.process",
+                                   Json::object(), Json::object(), 99, now + 900,
+                                   A2ATaskState::Working, "", 0}, now); },
                   "task price different from the signed card was accepted");
 }
 

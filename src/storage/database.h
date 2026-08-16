@@ -32,6 +32,7 @@ public:
     std::optional<MessageRecord> message(const std::string& message_id) const;
     std::optional<MessageRecord> message(const std::string& message_id,
                                          const std::string& idempotency_key) const;
+    std::vector<MessageRecord> messages() const;
     void updateMessage(const MessageRecord& message, std::uint64_t previous_revision);
     bool createBond(const BondRecord& bond);
     std::optional<BondRecord> bond(const std::string& bond_id) const;
@@ -46,6 +47,9 @@ public:
     bool hasProcessedEvent(const std::string& event_id) const;
     void recordWalletTransfer(const WalletTransfer& transfer);
     std::vector<WalletTransfer> walletHistory() const;
+    void upsertRuntimeRecord(const std::string& kind, const std::string& id,
+                             const Json& document);
+    std::vector<Json> runtimeRecords(const std::string& kind) const;
 
 private:
     void execute(const std::string& sql) const;

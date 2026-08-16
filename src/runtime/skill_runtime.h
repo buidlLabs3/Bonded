@@ -14,6 +14,8 @@
 
 namespace bonded {
 
+class Database;
+
 struct RuntimeAdapters {
     std::unique_ptr<MessagingAdapter> messaging;
     std::unique_ptr<StorageAdapter> storage;
@@ -33,15 +35,19 @@ public:
                  std::function<void(const Json&)> owner_action_required);
     SkillRuntime(SkillRegistry& registry, Profile profile, const Json& configuration,
                  std::function<void(const Json&)> owner_action_required,
-                 RuntimeAdapters adapters);
+                 RuntimeAdapters adapters, Database* database = nullptr);
 
     void registerDefaultSkills();
     Json status() const;
+    Json ownerState() const;
+    Json decideSpending(const std::string& proposal_id, bool approved,
+                        std::uint64_t now_unix);
 
 private:
     Json handler(const std::string& name, const Json& input);
     AgentCard ownCard(std::uint64_t now_unix, std::uint64_t expires_at,
-                      std::uint64_t task_price) const;
+                      std::uint64_t task_price,
+                      const std::string& payment_recipient) const;
     static Json spendingProposalJson(const SpendingProposal& proposal);
 
     SkillRegistry& registry_;
