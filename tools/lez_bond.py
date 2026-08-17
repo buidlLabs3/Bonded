@@ -71,6 +71,17 @@ SECRET_MARKERS = lez_wallet.SENSITIVE_MARKERS + (
     "viewing secret",
     "secret key:",
 )
+NATIVE_ERROR_CATEGORIES = {
+    "amountmismatcherror": "amount-mismatch",
+    "accountdataerror": "account-data",
+    "insufficientfundserror": "insufficient-funds",
+    "keynotfounderror": "key-not-found",
+    "multisequencertransactionsenderror": "sequencer-rejected",
+    "sequencerclienterror": "sequencer-client",
+    "sequencererror": "sequencer",
+    "signerror": "signing",
+    "transactionbuilderror": "transaction-build",
+}
 
 
 class BondAdapterError(RuntimeError):
@@ -433,6 +444,7 @@ def captured_native_output():
         root.chmod(0o700)
         log = root / "wallet.log"
         captured = {}
+        operation_error = None
         with log.open("w+b") as stream:
             log.chmod(0o600)
             saved_stdout = os.dup(1)
@@ -442,7 +454,10 @@ def captured_native_output():
                 sys.stderr.flush()
                 os.dup2(stream.fileno(), 1)
                 os.dup2(stream.fileno(), 2)
-                yield captured
+                try:
+                    yield captured
+                except BaseException as exc:
+                    operation_error = exc
             finally:
                 sys.stdout.flush()
                 sys.stderr.flush()
@@ -452,6 +467,12 @@ def captured_native_output():
                 os.close(saved_stderr)
                 stream.flush()
                 captured.update(scan_native_log(log))
+        if operation_error is not None:
+            categories = ", ".join(captured["error_categories"]) or "unclassified"
+            raise BondAdapterError(
+                f"official wallet native operation failed ({categories}); "
+                f"captured output sha256 {captured['captured_output_sha256']}"
+            ) from operation_error
 
 
 def scan_native_log(path: Path) -> dict:
@@ -459,7 +480,14 @@ def scan_native_log(path: Path) -> dict:
     lowered = data.decode("utf-8", errors="replace").lower()
     if any(marker in lowered for marker in SECRET_MARKERS):
         raise BondAdapterError("official wallet FFI emitted potential secret material")
-    return {"captured_output_sha256": hashlib.sha256(data).hexdigest(), "captured_output_bytes": len(data)}
+    categories = sorted(
+        label for marker, label in NATIVE_ERROR_CATEGORIES.items() if marker in lowered
+    )
+    return {
+        "captured_output_sha256": hashlib.sha256(data).hexdigest(),
+        "captured_output_bytes": len(data),
+        "error_categories": categories,
+    }
 
 
 def wait_for_finalized(transaction: str, timeout: float, expected_kind: str = "PrivacyPreserving") -> dict:

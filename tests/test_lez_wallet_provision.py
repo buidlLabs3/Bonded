@@ -115,7 +115,7 @@ class WalletProvisionTests(unittest.TestCase):
                             "00" * 32 if self.private_queries == 1
                             else provision.lez_bond.AUTHENTICATED_TRANSFER_PROGRAM_ID
                         ),
-                        "balance": "0" if self.private_queries == 1 else "150",
+                        "balance": "150" if self.private_queries == 3 else "0",
                         "nonce": "0",
                         "data_size": 0,
                         "data_sha256": hashlib.sha256(b"").hexdigest(),
@@ -131,7 +131,13 @@ class WalletProvisionTests(unittest.TestCase):
                 def account_data(self, _account):
                     return bytes([1]) + bytes(32)
 
-                def claim_private_not_initialized(self, _account, _solution):
+                def register_private(self, _account):
+                    return "aa" * 32
+
+                def sync_private_to_block(self, _block):
+                    pass
+
+                def claim_private_initialized(self, _account, _solution):
                     return "ab" * 32
 
                 def close(self):
@@ -177,6 +183,8 @@ class WalletProvisionTests(unittest.TestCase):
             self.assertEqual(evidence["execution"]["rayon_num_threads"], 2)
             operation = evidence["operations"][0]
             self.assertEqual(operation["status"], "finalized")
+            self.assertEqual(operation["registration"]["status"], "finalized")
+            self.assertEqual(operation["registration"]["transaction"], "aa" * 32)
             self.assertEqual(operation["transaction"], "ab" * 32)
             self.assertEqual(operation["block"], 123)
             self.assertEqual(json.loads(evidence_path.read_text()), evidence)

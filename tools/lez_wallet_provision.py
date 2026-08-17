@@ -134,7 +134,9 @@ class ProvisionWallet(lez_bond.OfficialWalletFfi):
         lib.wallet_ffi_claim_pinata.restype = ctypes.c_int
         private_symbols = (
             "wallet_ffi_get_account_private",
-            "wallet_ffi_claim_pinata_private_owned_not_initialized",
+            "wallet_ffi_register_private_account",
+            "wallet_ffi_claim_pinata_private_owned_already_initialized",
+            "wallet_ffi_sync_to_block",
         )
         self.private_supported = all(hasattr(lib, symbol) for symbol in private_symbols)
         if self.private_supported:
@@ -144,14 +146,25 @@ class ProvisionWallet(lez_bond.OfficialWalletFfi):
                 ctypes.POINTER(lez_bond.FfiAccount),
             ]
             lib.wallet_ffi_get_account_private.restype = ctypes.c_int
-            lib.wallet_ffi_claim_pinata_private_owned_not_initialized.argtypes = [
+            lib.wallet_ffi_register_private_account.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(lez_bond.FfiBytes32),
+                ctypes.POINTER(FfiTransferResult),
+            ]
+            lib.wallet_ffi_register_private_account.restype = ctypes.c_int
+            lib.wallet_ffi_claim_pinata_private_owned_already_initialized.argtypes = [
                 ctypes.c_void_p,
                 ctypes.POINTER(lez_bond.FfiBytes32),
                 ctypes.POINTER(lez_bond.FfiBytes32),
                 ctypes.POINTER(amount),
+                ctypes.c_size_t,
+                ctypes.c_void_p,
+                ctypes.c_size_t,
                 ctypes.POINTER(FfiTransferResult),
             ]
-            lib.wallet_ffi_claim_pinata_private_owned_not_initialized.restype = ctypes.c_int
+            lib.wallet_ffi_claim_pinata_private_owned_already_initialized.restype = ctypes.c_int
+            lib.wallet_ffi_sync_to_block.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+            lib.wallet_ffi_sync_to_block.restype = ctypes.c_int
         lib.wallet_ffi_free_transfer_result.argtypes = [ctypes.POINTER(FfiTransferResult)]
         lib.wallet_ffi_free_transfer_result.restype = None
 
@@ -225,7 +238,25 @@ class ProvisionWallet(lez_bond.OfficialWalletFfi):
         finally:
             self.lib.wallet_ffi_free_account_data(ctypes.byref(account))
 
-    def claim_private_not_initialized(
+    def register_private(self, account: lez_bond.FfiBytes32) -> str:
+        if not self.private_supported:
+            raise ProvisionError("pinned official wallet FFI does not support private agents")
+        return self._transfer_hash(
+            lambda result: self.lib.wallet_ffi_register_private_account(
+                self.handle, ctypes.byref(account), result
+            )
+        )
+
+    def sync_private_to_block(self, block: int) -> None:
+        if not self.private_supported:
+            raise ProvisionError("pinned official wallet FFI does not support private agents")
+        self._require(
+            self.lib.wallet_ffi_sync_to_block(self.handle, block),
+            f"private state sync to block {block}",
+        )
+        self._require(self.lib.wallet_ffi_save(self.handle), "wallet save")
+
+    def claim_private_initialized(
         self, account: lez_bond.FfiBytes32, solution: int
     ) -> str:
         if not self.private_supported:
@@ -233,11 +264,14 @@ class ProvisionWallet(lez_bond.OfficialWalletFfi):
         pinata = self.account(PINATA_ACCOUNT)
         value = (ctypes.c_uint8 * 16).from_buffer_copy(solution.to_bytes(16, "little"))
         return self._transfer_hash(
-            lambda result: self.lib.wallet_ffi_claim_pinata_private_owned_not_initialized(
+            lambda result: self.lib.wallet_ffi_claim_pinata_private_owned_already_initialized(
                 self.handle,
                 ctypes.byref(pinata),
                 ctypes.byref(account),
                 ctypes.byref(value),
+                0,
+                None,
+                0,
                 result,
             )
         )
@@ -290,12 +324,16 @@ def execute_agent(args) -> dict:
     journaled = _operation(evidence, operation_id)
     if journaled is not None and journaled.get("status") == "finalized":
         return evidence
-    if journaled is not None and journaled.get("status") == "submitting":
+    if journaled is not None and journaled.get("status") in (
+        "submitting-registration",
+        "submitting-claim",
+    ):
         raise ProvisionError(
             f"provisioning operation {operation_id} was interrupted during submission; "
             "reconcile wallet/sequencer state before any retry"
         )
-    if journaled is not None and journaled.get("status") != "submitted":
+    resumable = ("registration-submitted", "registered", "claim-submitted")
+    if journaled is not None and journaled.get("status") not in resumable:
         raise ProvisionError(f"provisioning journal entry has invalid status: {operation_id}")
 
     ffi = ProvisionWallet(provenance, wallet)
@@ -305,29 +343,67 @@ def execute_agent(args) -> dict:
             before = ffi.private_snapshot(account)
             if before["balance"] != "0":
                 raise ProvisionError("agent account is already funded but has no journal")
-            pinata = ffi.account(PINATA_ACCOUNT)
-            pinata_before = ffi.snapshot(pinata)
-            solution, pow_evidence = solve_pinata(ffi.account_data(pinata))
             journaled = {
                 "id": operation_id,
-                "status": "submitting",
-                "operation": "private-pinata-initialize-and-fund",
+                "status": "submitting-registration",
+                "operation": "private-register-then-pinata-fund",
                 "agent": agent,
                 "state": {"before": before},
-                "pinata": {
-                    "account": PINATA_ACCOUNT,
-                    "state": {"before": pinata_before},
-                    "proof_of_work": pow_evidence,
-                    "prize": str(PINATA_PRIZE),
-                },
                 "prepared_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             }
             evidence["operations"].append(journaled)
             lez_wallet.atomic_json(args.evidence, evidence)
             with lez_bond.captured_native_output() as captured:
-                transaction = ffi.claim_private_not_initialized(account, solution)
-            journaled.update({
+                registration_transaction = ffi.register_private(account)
+            journaled["registration"] = {
                 "status": "submitted",
+                "captured_native_output": captured,
+                "transaction": registration_transaction,
+                "submitted_at_utc": datetime.now(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat(),
+            }
+            journaled["status"] = "registration-submitted"
+            lez_wallet.atomic_json(args.evidence, evidence)
+
+        if journaled["status"] == "registration-submitted":
+            registration = journaled["registration"]
+            inclusion = lez_bond.wait_for_finalized(
+                registration["transaction"], args.timeout, "PrivacyPreserving"
+            )
+            ffi.sync_private_to_block(inclusion["block"])
+            registered = ffi.private_snapshot(account)
+            if registered["program_owner"] != lez_bond.AUTHENTICATED_TRANSFER_PROGRAM_ID:
+                raise ProvisionError(
+                    "private registration did not assign the authenticated-transfer owner"
+                )
+            if registered["balance"] != "0":
+                raise ProvisionError("private registration produced a non-zero balance")
+            registration.update(inclusion)
+            registration["state"] = {"after": registered}
+            registration["status"] = "finalized"
+            registration["observed_at_utc"] = (
+                datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+            )
+            journaled["status"] = "registered"
+            lez_wallet.atomic_json(args.evidence, evidence)
+
+        if journaled["status"] == "registered":
+            pinata = ffi.account(PINATA_ACCOUNT)
+            pinata_before = ffi.snapshot(pinata)
+            solution, pow_evidence = solve_pinata(ffi.account_data(pinata))
+            journaled["pinata"] = {
+                "account": PINATA_ACCOUNT,
+                "state": {"before": pinata_before},
+                "proof_of_work": pow_evidence,
+                "prize": str(PINATA_PRIZE),
+            }
+            journaled["status"] = "submitting-claim"
+            lez_wallet.atomic_json(args.evidence, evidence)
+            with lez_bond.captured_native_output() as captured:
+                transaction = ffi.claim_private_initialized(account, solution)
+            journaled.update({
+                "status": "claim-submitted",
                 "captured_native_output": captured,
                 "transaction": transaction,
                 "submitted_at_utc": datetime.now(timezone.utc)
@@ -339,6 +415,7 @@ def execute_agent(args) -> dict:
         inclusion = lez_bond.wait_for_finalized(
             journaled["transaction"], args.timeout, "PrivacyPreserving"
         )
+        ffi.sync_private_to_block(inclusion["block"])
         after = ffi.private_snapshot(account)
         before = journaled["state"]["before"]
         pinata_after = ffi.snapshot(ffi.account(PINATA_ACCOUNT))

@@ -132,6 +132,7 @@ class BondWalletAdapterTests(unittest.TestCase):
             pass
         self.assertRegex(captured["captured_output_sha256"], r"^[0-9a-f]{64}$")
         self.assertGreaterEqual(captured["captured_output_bytes"], 0)
+        self.assertEqual(captured["error_categories"], [])
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "wallet.log"
@@ -141,6 +142,23 @@ class BondWalletAdapterTests(unittest.TestCase):
             path.write_text("Nullifier secret: should never escape", encoding="utf-8")
             with self.assertRaisesRegex(bond.BondAdapterError, "secret"):
                 bond.scan_native_log(path)
+
+            path.write_text(
+                "[wallet-ffi] failed: TransactionBuildError(invalid input)",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                bond.scan_native_log(path)["error_categories"], ["transaction-build"]
+            )
+
+    def test_native_failure_exposes_only_a_safe_category_and_digest(self):
+        with self.assertRaisesRegex(
+            bond.BondAdapterError,
+            r"transaction-build.*captured output sha256 [0-9a-f]{64}",
+        ):
+            with bond.captured_native_output():
+                os.write(2, b"TransactionBuildError: internal details\n")
+                raise RuntimeError("raw failure")
 
     def test_initialize_and_settlement_relationships_fail_closed(self):
         args = types.SimpleNamespace(amount=25)
