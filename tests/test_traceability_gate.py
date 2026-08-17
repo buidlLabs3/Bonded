@@ -35,7 +35,7 @@ class TraceabilityGateTests(unittest.TestCase):
             "owner": "release",
             "required_scope": "clean-clone",
             "status": "open",
-            "verification_command": "scripts/verify.sh",
+            "verification_command": "manual verification",
             "pass_condition": "The verification command passes.",
             "evidence": [],
             "gap": "Not verified yet.",
@@ -97,6 +97,32 @@ class TraceabilityGateTests(unittest.TestCase):
                 traceability.readiness(
                     self.readiness(directory, evidence=["missing.json"]), Path(directory)
                 )
+
+    def test_readiness_rejects_a_missing_verification_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            audit = self.readiness(
+                directory, verification_command="scripts/does-not-exist.sh"
+            )
+            with self.assertRaisesRegex(traceability.TraceabilityGateError, "missing command"):
+                traceability.readiness(audit, Path(directory))
+
+    def test_criterion_gate_fails_closed_until_verified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            open_audit = self.readiness(directory)
+            with self.assertRaisesRegex(traceability.TraceabilityGateError, "is open"):
+                traceability.verify_criterion(
+                    open_audit, Path("evidence.json"), Path(directory), "REQ-01"
+                )
+
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}", encoding="utf-8")
+            verified_audit = self.readiness(
+                directory, status="verified-local", evidence=["evidence.json"]
+            )
+            report = traceability.verify_criterion(
+                verified_audit, Path("index.json"), Path(directory), "REQ-01"
+            )
+            self.assertEqual(report["criterion_status"], "verified-local")
 
     def test_verified_readiness_claim_triggers_testnet_gate(self):
         with tempfile.TemporaryDirectory() as directory:

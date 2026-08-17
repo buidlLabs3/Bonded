@@ -52,6 +52,28 @@ The runtime includes encrypted storage, persisted bond/message state, spending
 approval, A2A task/payment coordination, recovery handling, and 21
 profile-scoped skills across messaging, storage, blockchain, A2A, and metadata.
 
+Basecamp runs as a separate owner controller. It discovers signed Agent Cards
+over Logos Messaging and sends encrypted owner commands to the selected agent.
+Each Bonded instance persists its own state and delegates network work to the
+official Delivery, Storage, and LEZ Core modules; it does not replace them.
+
+The default skills are:
+
+- Storage: `storage.upload`, `storage.download`, `storage.list`, `storage.share`
+- Messaging: `messaging.send`, `messaging.join`, `messaging.create_group`
+- Blockchain: `wallet.balance`, `wallet.send`, `wallet.history`, `program.query`,
+  `program.call`, `program.deploy`
+- A2A: `agent.card`, `agent.discover`, `agent.task`, `agent.subscribe`,
+  `agent.cancel`
+- Meta: `meta.skills`, `meta.status`, `meta.configure`
+
+Skills are registered in C++ as a `SkillDefinition` containing a name,
+description, JSON input/output schemas, allowed profiles, and a handler. New
+trusted skills must be compiled into the module and registered with
+`SkillRegistry`; this release intentionally has no dynamic third-party code
+loader. `meta.skills` exposes the schemas allowed by the active profile, and
+`invokeSkill` rejects skills outside that allowlist.
+
 ## Testnet
 
 The repository pins official LEZ v0.2.4 commit

@@ -66,6 +66,42 @@ For a single profile, `bin/bonded-inbox --help` exposes `plan`, `deploy`,
 `start`, `stop`, `status`, `health`, `logs`, `invoke`, and guarded test-only
 `teardown` commands.
 
+## Pre-Video Acceptance
+
+Use a fresh private agent data root and keep all three agents running while
+Basecamp is open. The agent selector must show three distinct signed identities.
+Run these flows without fixture mode:
+
+1. **Personal file vault:** select the Vault agent in Tools, upload private text,
+   record the returned address, then download it. Stop and restart only the Vault
+   profile and download the same address again.
+2. **Paid skill marketplace:** publish cards, discover the provider from a second
+   agent, create a priced task, complete it, and retain the signed receipt plus
+   finalized LEZ transaction. Repeat a request ID to confirm replay rejection;
+   cancel a separate unfinished task to confirm no payment is duplicated.
+3. **On-chain event alert:** select the Settlement agent, observe a known account,
+   then use the Inbox agent to send the encrypted result to the owner. Stop the
+   Inbox agent before one attempt, restart it, and confirm queued delivery occurs
+   once.
+
+After every flow, capture the public result only. Do not capture plaintext,
+wallet paths, owner keys, recovery material, or the contents of agent databases.
+The release is not video-ready unless all commands below succeed and every open
+criterion in `release/submission-readiness.json` has been updated with real
+evidence:
+
+```bash
+scripts/manage-live-agents.sh health --data-root "$AGENT_DATA_ROOT"
+scripts/verify-lez-evidence.sh
+python3 tools/traceability_gate.py
+python3 tools/traceability_gate.py --criterion LP8-THREE-AGENTS
+python3 tools/traceability_gate.py --criterion LP8-OWNER-CHANNEL
+python3 tools/traceability_gate.py --criterion LP8-DEFAULT-SKILLS
+python3 tools/traceability_gate.py --criterion LP8-A2A-PAID-TASK
+python3 tools/traceability_gate.py --criterion LP8-USE-CASES
+python3 tools/traceability_gate.py --criterion LP8-COMPUTE-UNITS
+```
+
 ## Official LEZ Testnet
 
 Release transactions use `https://testnet.lez.logos.co` and the official LEZ
@@ -169,6 +205,11 @@ The live module waits for `lez_core.poll_transaction_status` before returning a
 transaction hash. That confirms sequencer inclusion only; use the evidence gate
 above to confirm finalized explorer visibility.
 
+Official compute-unit cost must come from the official wallet, sequencer, or
+explorer receipt for the exact finalized transaction. The current 16-operation
+evidence set does not expose a numeric CU field, so local timings in
+`tools/benchmark_local.py` must not be reported as CU cost.
+
 ## Recovery
 
 Stop only the affected profile, preserve its data directory, run `health`, and
@@ -195,3 +236,9 @@ These testnet rows prove only the 16 public operations indexed by
 `evidence/testnet/required-evidence.json`. They do not claim that three agents,
 the Basecamp backend, or the live A2A flow are deployed. The criterion-by-criterion
 status and explicit gaps are recorded in `release/submission-readiness.json`.
+
+Known release limitations are the absence of a dynamic untrusted-skill loader,
+the fixture-only scope of `basecamp-preview`, and the need for an external
+self-hosted runner for the bounded real-proof CI job. Public testnet finality,
+live Logos Core behavior, and CI status cannot be inferred from local adapter
+tests.

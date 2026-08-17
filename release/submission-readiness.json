@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "specification": "https://github.com/logos-co/lambda-prize/blob/master/prizes/LP-0008.md",
-  "release_commit": "ab36ba029c9b8df69ee0c75bbb4f1c7e9dbf1e15",
+  "release_commit": "635217990f63d7447c7aa1fb803b00a54e9bb927",
   "overall_status": "not-ready",
   "criteria": [
     {
@@ -23,7 +23,7 @@
       "owner": "deployment",
       "required_scope": "live-logos-core",
       "status": "open",
-      "verification_command": "scripts/verify-live-deployments.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-THREE-AGENTS",
       "pass_condition": "Three distinct public identities report healthy after clean deploy, stop, and restart using isolated data directories.",
       "evidence": [],
       "gap": "The deployment CLI now starts and supervises pinned Logos Core instances with durable agent identities, but three official deployments have not yet completed the live verification gate."
@@ -34,7 +34,7 @@
       "owner": "messaging-integration",
       "required_scope": "live-logos-core",
       "status": "open",
-      "verification_command": "scripts/verify-owner-channel.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-OWNER-CHANNEL",
       "pass_condition": "A separate owner instance receives, reviews, and replies to an agent message, and the state survives agent restart.",
       "evidence": [],
       "gap": "Messaging skills pass with local adapters, but no separate live owner instance has been recorded."
@@ -45,7 +45,7 @@
       "owner": "basecamp-integration",
       "required_scope": "live-logos-core",
       "status": "open",
-      "verification_command": "scripts/verify-basecamp-live.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-BASECAMP",
       "pass_condition": "The UI displays live agent state and its review, approval, settings, refresh, offline, and recovery actions affect durable module state.",
       "evidence": [
         "basecamp/BondedInbox/BondedInboxPage.qml"
@@ -58,7 +58,7 @@
       "owner": "core-integration",
       "required_scope": "live-logos-core",
       "status": "open",
-      "verification_command": "scripts/verify-live-skills.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-DEFAULT-SKILLS",
       "pass_condition": "Every default skill passes through official modules, including failure isolation and recovery, without a memory adapter.",
       "evidence": [],
       "gap": "Production adapters now target official Delivery, Storage, and LEZ Core APIs, but the complete live 21-skill matrix has not yet been recorded."
@@ -69,7 +69,7 @@
       "owner": "a2a-integration",
       "required_scope": "public-testnet",
       "status": "open",
-      "verification_command": "scripts/verify-live-a2a.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-A2A-PAID-TASK",
       "pass_condition": "Signed Agent Cards are discovered over Logos Messaging and a task completes with a finalized below-limit LEZ payment and replay protection.",
       "evidence": [
         "evidence/testnet/paid-task/settlement.json"
@@ -82,7 +82,7 @@
       "owner": "demo-integration",
       "required_scope": "public-testnet",
       "status": "open",
-      "verification_command": "scripts/verify-live-use-cases.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-USE-CASES",
       "pass_condition": "File vault, paid skill marketplace, and on-chain event alert flows each pass from fresh state with one documented recovery check.",
       "evidence": [],
       "gap": "Individual local skills and public transactions are tested, but the three complete live flows are not yet proven."
@@ -93,7 +93,7 @@
       "owner": "performance-evidence",
       "required_scope": "public-testnet",
       "status": "open",
-      "verification_command": "scripts/verify-lez-compute-units.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-COMPUTE-UNITS",
       "pass_condition": "Every distinct deployment, program call, and transfer maps to an official receipt with a transaction, block, and compute-unit value.",
       "evidence": [],
       "gap": "Local timing exists, but local timing is not official compute-unit evidence."
@@ -117,7 +117,7 @@
       "owner": "release",
       "required_scope": "clean-clone",
       "status": "open",
-      "verification_command": "scripts/verify.sh",
+      "verification_command": "python3 tools/traceability_gate.py --criterion LP8-DOCUMENTATION",
       "pass_condition": "A clean clone passes the release matrix and an evaluator can reproduce all live flows using only the four tracked Markdown files.",
       "evidence": [
         "README.md",

@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import json
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -99,6 +100,16 @@ def readiness(path: Path, root: Path) -> dict:
         for field in ("requirement", "owner", "verification_command", "pass_condition", "gap"):
             if not isinstance(criterion[field], str) or not criterion[field].strip():
                 raise TraceabilityGateError(f"readiness criterion {identifier} has empty {field}")
+        command = shlex.split(criterion["verification_command"])
+        command_path = None
+        if command and command[0].startswith(("bin/", "scripts/", "tools/")):
+            command_path = command[0]
+        elif len(command) > 1 and command[0] == "python3" and command[1].startswith("tools/"):
+            command_path = command[1]
+        if command_path is not None and not (root / command_path).is_file():
+            raise TraceabilityGateError(
+                f"readiness criterion {identifier} references missing command: {command_path}"
+            )
         if criterion["status"] not in READINESS_STATUSES:
             raise TraceabilityGateError(
                 f"readiness criterion {identifier} has unsupported status: {criterion['status']}"
@@ -121,6 +132,33 @@ def readiness(path: Path, root: Path) -> dict:
                 f"verified readiness criterion {identifier} must reference evidence"
             )
     return document
+
+
+def verify_criterion(path: Path, evidence_index: Path, root: Path, identifier: str) -> dict:
+    document = readiness(path, root)
+    criterion = next(
+        (item for item in document["criteria"] if item["id"] == identifier), None
+    )
+    if criterion is None:
+        raise TraceabilityGateError(f"unknown readiness criterion: {identifier}")
+    if not criterion["status"].startswith("verified-"):
+        raise TraceabilityGateError(
+            f"readiness criterion {identifier} is {criterion['status']}: {criterion['gap']}"
+        )
+    if criterion["status"] == "verified-testnet":
+        report = _load_evidence_gate().audit(evidence_index, root)
+        if report["status"] != "pass":
+            raise TraceabilityGateError(
+                f"readiness criterion {identifier} requires the offline LEZ evidence gate"
+            )
+    return {
+        "schema_version": 1,
+        "status": "pass",
+        "criterion": identifier,
+        "criterion_status": criterion["status"],
+        "scope": criterion["required_scope"],
+        "evidence": criterion["evidence"],
+    }
 
 
 def audit(
@@ -166,12 +204,23 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         default=REPO_ROOT / "evidence/testnet/required-evidence.json",
     )
+    result.add_argument("--criterion", help="Fail unless one readiness criterion is verified")
     return result
 
 
 def main() -> int:
     args = parser().parse_args()
     try:
+        if args.criterion:
+            print(
+                json.dumps(
+                    verify_criterion(
+                        args.readiness, args.evidence_index, REPO_ROOT, args.criterion
+                    ),
+                    sort_keys=True,
+                )
+            )
+            return 0
         print(
             json.dumps(
                 audit(args.traceability, args.evidence_index, REPO_ROOT, args.readiness),
