@@ -247,14 +247,16 @@ class ProvisionWallet(lez_bond.OfficialWalletFfi):
             )
         )
 
-    def sync_private_to_block(self, block: int) -> None:
+    def sync_private_to_block(self, block: int) -> dict:
         if not self.private_supported:
             raise ProvisionError("pinned official wallet FFI does not support private agents")
-        self._require(
-            self.lib.wallet_ffi_sync_to_block(self.handle, block),
-            f"private state sync to block {block}",
-        )
-        self._require(self.lib.wallet_ffi_save(self.handle), "wallet save")
+        with lez_bond.captured_native_output() as captured:
+            self._require(
+                self.lib.wallet_ffi_sync_to_block(self.handle, block),
+                f"private state sync to block {block}",
+            )
+            self._require(self.lib.wallet_ffi_save(self.handle), "wallet save")
+        return captured
 
     def claim_private_initialized(
         self, account: lez_bond.FfiBytes32, solution: int
@@ -371,7 +373,7 @@ def execute_agent(args) -> dict:
             inclusion = lez_bond.wait_for_finalized(
                 registration["transaction"], args.timeout, "PrivacyPreserving"
             )
-            ffi.sync_private_to_block(inclusion["block"])
+            sync_evidence = ffi.sync_private_to_block(inclusion["block"])
             registered = ffi.private_snapshot(account)
             if registered["program_owner"] != lez_bond.AUTHENTICATED_TRANSFER_PROGRAM_ID:
                 raise ProvisionError(
@@ -381,6 +383,7 @@ def execute_agent(args) -> dict:
                 raise ProvisionError("private registration produced a non-zero balance")
             registration.update(inclusion)
             registration["state"] = {"after": registered}
+            registration["private_sync"] = sync_evidence
             registration["status"] = "finalized"
             registration["observed_at_utc"] = (
                 datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -415,7 +418,7 @@ def execute_agent(args) -> dict:
         inclusion = lez_bond.wait_for_finalized(
             journaled["transaction"], args.timeout, "PrivacyPreserving"
         )
-        ffi.sync_private_to_block(inclusion["block"])
+        sync_evidence = ffi.sync_private_to_block(inclusion["block"])
         after = ffi.private_snapshot(account)
         before = journaled["state"]["before"]
         pinata_after = ffi.snapshot(ffi.account(PINATA_ACCOUNT))
@@ -429,6 +432,7 @@ def execute_agent(args) -> dict:
         journaled["pinata"]["state"]["after"] = pinata_after
         journaled.update(inclusion)
         journaled["state"]["after"] = after
+        journaled["private_sync"] = sync_evidence
         journaled["status"] = "finalized"
         journaled["observed_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         evidence["status"] = "provisioned"

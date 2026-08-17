@@ -135,7 +135,11 @@ class WalletProvisionTests(unittest.TestCase):
                     return "aa" * 32
 
                 def sync_private_to_block(self, _block):
-                    pass
+                    return {
+                        "captured_output_sha256": "ce" * 32,
+                        "captured_output_bytes": 0,
+                        "error_categories": [],
+                    }
 
                 def claim_private_initialized(self, _account, _solution):
                     return "ab" * 32
@@ -185,7 +189,9 @@ class WalletProvisionTests(unittest.TestCase):
             self.assertEqual(operation["status"], "finalized")
             self.assertEqual(operation["registration"]["status"], "finalized")
             self.assertEqual(operation["registration"]["transaction"], "aa" * 32)
+            self.assertEqual(operation["registration"]["private_sync"]["captured_output_bytes"], 0)
             self.assertEqual(operation["transaction"], "ab" * 32)
+            self.assertEqual(operation["private_sync"]["captured_output_bytes"], 0)
             self.assertEqual(operation["block"], 123)
             self.assertEqual(json.loads(evidence_path.read_text()), evidence)
 

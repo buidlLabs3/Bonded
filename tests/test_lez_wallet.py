@@ -153,6 +153,14 @@ class OfficialWalletAdapterTests(unittest.TestCase):
             with self.assertRaisesRegex(wallet.WalletAdapterError, "both"):
                 wallet.deploy_program(args, profile())
 
+    def test_atomic_wallet_journal_is_private(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "journal.json"
+            value = {"status": "verified"}
+            wallet.atomic_json(path, value)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), value)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
     def test_release_script_delegates_to_official_wallet(self):
         script = (REPO / "scripts" / "deploy-lez-testnet.sh").read_text(encoding="utf-8")
         self.assertIn("deploy-lez-official-wallet.sh", script)
